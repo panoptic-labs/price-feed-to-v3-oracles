@@ -49,10 +49,11 @@ contract PythToV3Oracle {
         sqrtPriceX96 = pythPriceToSqrtRatioX96(getPythPrice());
         tick = TickMath.getTickAtSqrtRatio(sqrtPriceX96);
 
-        // TODO: what to return for these? need to look at how they're consumed in panoptic
-        // Maybe always return cardinality >= 100? Isn't that a constraint for pool readiness somewhere?
-        observationIndex = uint16(block.timestamp % 65536); // Cycling index based on time
-        observationCardinality = 8; // Match the 8-slot median queue
+        // Always return the max index
+        observationIndex = 65534;
+        // Always return the length of the observations array, so that callers always roll over
+        observationCardinality = 65535;
+        // This value shouldn't be used by callers given the above
         observationCardinalityNext = 8;
 
         // not used in v4, so always 0

@@ -43,7 +43,7 @@ contract PythToV3OracleTest is Test {
         assertGt(int256(tick), 0, "tick should be > 0, unless ETH crashed below $1");
         assertEq(feeProtocol, 0, "feeProtocol always 0");
         assertTrue(unlocked, "unlocked always true");
-        assertEq(obsCard, 8, "observationCardinality should be 8");
+        assertEq(obsCard, 65535, "observationCardinality should be 8");
         assertEq(obsCardNext, 8, "observationCardinalityNext should be 8");
 
         // Verify tick and sqrtPrice are consistent
@@ -215,7 +215,7 @@ contract PythToV3OracleTest is Test {
 
         // Values shouldn't change since it's a no-op
         (, , , uint16 obsCard, uint16 obsCardNext, , ) = oracle.slot0();
-        assertEq(obsCard, 8, "observationCardinality unchanged");
+        assertEq(obsCard, 65535, "observationCardinality unchanged");
         assertEq(obsCardNext, 8, "observationCardinalityNext unchanged");
     }
 
