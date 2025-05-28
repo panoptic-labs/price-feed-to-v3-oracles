@@ -1,0 +1,13 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+remappings = [
+    "@pythnetwork/pyth-sdk-solidity/=lib/pyth-sdk-solidity/",
+    "@uniswap/v3-core/=lib/v3-core/",
+    "v3-core/=lib/v3-core/contracts/",
+]
+evm_version = "cancun"
+
+[rpc_endpoints]
+unichain = "https://unichain-mainnet.g.alchemy.com/v2/VN5K96b647acOyIXfX45zBdO53Dx7ZKm"
