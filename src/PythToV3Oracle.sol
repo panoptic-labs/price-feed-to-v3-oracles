@@ -46,23 +46,25 @@ contract PythToV3Oracle {
             bool unlocked
         )
     {
-        // TODO: how many bits of precision do we need again? using max for now:
-        tick = pythPriceToTick(getPythPrice());
-        // NOTE: that this is tick-snapped and less precise - the opposite of typical
-        // slot0 responses, where `tick` loses some of `sqrtPrice`'s precision
-        sqrtPriceX96 = TickMath.getSqrtRatioAtTick(tick);
+        unchecked {
+          // TODO: how many bits of precision do we need again? using max for now:
+          tick = pythPriceToTick(getPythPrice());
+          // NOTE: that this is tick-snapped and less precise - the opposite of typical
+          // slot0 responses, where `tick` loses some of `sqrtPrice`'s precision
+          sqrtPriceX96 = TickMath.getSqrtRatioAtTick(tick);
 
-        // Always return the max index
-        observationIndex = 65534;
-        // Always return the length of the observations array, so that callers always roll over
-        observationCardinality = 65535;
-        // This value shouldn't be used by callers given the above
-        observationCardinalityNext = 8;
+          // Always return the max index
+          observationIndex = 65534;
+          // Always return the length of the observations array, so that callers always roll over
+          observationCardinality = 65535;
+          // This value shouldn't be used by callers given the above
+          observationCardinalityNext = 8;
 
-        // not used in v4, so always 0
-        feeProtocol = 0;
-        // always true in v4
-        unlocked = true;
+          // not used in v4, so always 0
+          feeProtocol = 0;
+          // always true in v4
+          unlocked = true;
+        }
     }
 
     /// @notice Returns data about a specific observation index.
@@ -83,18 +85,20 @@ contract PythToV3Oracle {
             bool initialized
         )
     {
-        // Use a blockTimestamp close to now, but unique per-observation
-        // Index 0 was 65534 seconds ago, and the max index was now
-        blockTimestamp = uint32(block.timestamp - 65534 + index);
-        tickCumulative =
-            // TODO: how many bits of precision do we need again? using max for now:
-            int56(pythPriceToTick(getPythPrice())) *
-            int56(int32(blockTimestamp));
+        unchecked {
+            // Use a blockTimestamp close to now, but unique per-observation
+            // Index 0 was 65534 seconds ago, and the max index was now
+            blockTimestamp = uint32(block.timestamp - 65534 + index);
+            tickCumulative =
+                // TODO: how many bits of precision do we need again? using max for now:
+                int56(pythPriceToTick(getPythPrice())) *
+                int56(int32(blockTimestamp));
 
-        // Always 0 in v4
-        secondsPerLiquidityCumulativeX128 = 0;
-        // These values are always safe to use - they're just stubbed based on the chainlink price
-        initialized = true;
+            // Always 0 in v4
+            secondsPerLiquidityCumulativeX128 = 0;
+            // These values are always safe to use - they're just stubbed based on the chainlink price
+            initialized = true;
+        }
     }
 
     /// @notice Returns the cumulative tick and liquidity as of each timestamp `secondsAgo` from the current block timestamp.
@@ -111,21 +115,23 @@ contract PythToV3Oracle {
             uint160[] memory secondsPerLiquidityCumulativeX128s
         )
     {
-        tickCumulatives = new int56[](secondsAgos.length);
+        unchecked {
+          tickCumulatives = new int56[](secondsAgos.length);
 
-        // TODO: how many bits of precision do we need again? doing max for now:
-        int24 currentTick = pythPriceToTick(getPythPrice());
+          // TODO: how many bits of precision do we need again? doing max for now:
+          int24 currentTick = pythPriceToTick(getPythPrice());
 
-        for (uint256 i = 0; i < secondsAgos.length; i++) {
-            // Use the same current tick for all observations
-            // The cumulative = tick * timestamp at that point in time
-            // This ensures TWAP calculations will always result in the current tick
-            tickCumulatives[i] =
-                int56(currentTick) *
-                int56(int256(block.timestamp - secondsAgos[i]));
+          for (uint256 i = 0; i < secondsAgos.length; i++) {
+              // Use the same current tick for all observations
+              // The cumulative = tick * timestamp at that point in time
+              // This ensures TWAP calculations will always result in the current tick
+              tickCumulatives[i] =
+                  int56(currentTick) *
+                  int56(int256(block.timestamp - secondsAgos[i]));
+          }
+
+          return (tickCumulatives, new uint160[](secondsAgos.length));
         }
-
-        return (tickCumulatives, new uint160[](secondsAgos.length));
     }
 
     /// @notice Get the current price from Pyth with adjustable variation.
@@ -143,21 +149,23 @@ contract PythToV3Oracle {
     /// @param price Raw Pyth price (8 decimals, can be negative)
     /// @return tick The corresponding Uniswap V3 tick
     function pythPriceToTick(int64 price) internal pure returns (int24) {
-        // Handle negative prices by taking absolute value and negating result
-        bool isNegative = price < 0;
-        uint64 absPrice = uint64(isNegative ? -price : price);
+        unchecked {
+            // Handle negative prices by taking absolute value and negating result
+            bool isNegative = price < 0;
+            uint64 absPrice = uint64(isNegative ? -price : price);
 
-        // Pyth prices have 8 decimals, so we need to scale to get the actual price
-        // Convert to Q128.128 format: (price * 2^128) / 10^8
-        uint256 priceX128 = (uint256(absPrice) << 128) / (10 ** DECIMALS);
+            // Pyth prices have 8 decimals, so we need to scale to get the actual price
+            // Convert to Q128.128 format: (price * 2^128) / 10^8
+            uint256 priceX128 = (uint256(absPrice) << 128) / (10 ** DECIMALS);
 
-        // TODO: what precision to use here? using max for now:
-        int256 tick = log_1p0001(priceX128, 63);
+            // TODO: what precision to use here? using max for now:
+            int256 tick = log_1p0001(priceX128, 63);
 
-        // Apply sign
-        if (isNegative) tick = -tick;
+            // Apply sign
+            if (isNegative) tick = -tick;
 
-        return int24(tick);
+            return int24(tick);
+        }
     }
 
     /// @notice Approximates the absolute value of log base `1.0001` for a number in (0, 2**128) (`argX128/2^128`) with `precision` bits of precision.
