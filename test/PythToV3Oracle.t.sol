@@ -11,11 +11,10 @@ import "../src/PythToV3Oracle.sol";
 
 contract PythToV3OracleTest is Test {
     PythToV3Oracle oracle;
-    IPyth pyth =
-        IPyth(
-            // From: https://docs.pyth.network/price-feeds/contract-addresses/evm
-            0x2880aB155794e7179c9eE2e38200202908C17B43 // Pyth on unichain
-        );
+    IPyth pyth = IPyth(
+        // From: https://docs.pyth.network/price-feeds/contract-addresses/evm
+        0x2880aB155794e7179c9eE2e38200202908C17B43 // Pyth on unichain
+    );
     // From: https://www.pyth.network/developers/price-feed-ids
     bytes32 ethUsdPriceFeedId = 0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace;
     // https://uniscan.xyz/address/0x65081CB48d74A32e9CCfED75164b8c09972DBcF1
@@ -49,12 +48,9 @@ contract PythToV3OracleTest is Test {
         // Verify tick and sqrtPrice are consistent
         uint160 sqrtPriceFromTick = TickMath.getSqrtRatioAtTick(tick);
         // (The sqrtPriceX96 is more precise than the tick, so we must allow up to 1 tick tolerance)
-        uint160 lower = uint160(
-            FullMath.mulDiv(sqrtPriceFromTick, uint160(10_000), uint160(10_001))
-        );
-        uint160 upper = uint160(
-            FullMath.mulDiv(sqrtPriceFromTick, uint160(10_001), uint160(10_000))
-        );
+        // TODO: This is no longer true, remove this part
+        uint160 lower = uint160(FullMath.mulDiv(sqrtPriceFromTick, uint160(10_000), uint160(10_001)));
+        uint160 upper = uint160(FullMath.mulDiv(sqrtPriceFromTick, uint160(10_001), uint160(10_000)));
         assertTrue(
             sqrtPriceX96 >= lower && sqrtPriceX96 <= upper,
             "sqrtPrice not within one tick of TickMath roundtrip"
@@ -63,21 +59,15 @@ contract PythToV3OracleTest is Test {
 
     function testObservationsReturnsValidData() public {
         for (uint256 i = 0; i < 10; i++) {
-            (
-                uint32 blockTimestamp,
-                int56 tickCumulative,
-                uint160 secondsPerLiquidityX128,
-                bool initialized
-            ) = oracle.observations(i);
+            (uint32 blockTimestamp, int56 tickCumulative, uint160 secondsPerLiquidityX128, bool initialized) =
+                oracle.observations(i);
 
             // Basic checks
             assertTrue(initialized, "All observations should be initialized");
             assertEq(secondsPerLiquidityX128, 0, "secondsPerLiquidity always 0 in V4");
             assertLe(blockTimestamp, block.timestamp, "blockTimestamp shouldn't be in future");
             assertEq(
-                blockTimestamp,
-                uint32(block.timestamp - 65534 + i),
-                "blockTimestamp should be now - 65534 + index"
+                blockTimestamp, uint32(block.timestamp - 65534 + i), "blockTimestamp should be now - 65534 + index"
             );
 
             // tickCumulative should be reasonable
@@ -87,19 +77,15 @@ contract PythToV3OracleTest is Test {
 
     function testObservationsConsistency() public {
         // Get two consecutive observations
-        (uint32 ts0, int56 cumulative0, , ) = oracle.observations(0);
-        (uint32 ts1, int56 cumulative1, , ) = oracle.observations(1);
+        (uint32 ts0, int56 cumulative0,,) = oracle.observations(0);
+        (uint32 ts1, int56 cumulative1,,) = oracle.observations(1);
 
         // Calculate the tick from cumulative difference
         int24 derivedTick = int24((cumulative1 - cumulative0) / int56(uint56(ts1 - ts0)));
 
         // Should match current tick from slot0
-        (, int24 currentTick, , , , , ) = oracle.slot0();
-        assertEq(
-            derivedTick,
-            currentTick,
-            "Derived tick from observations should match slot0 tick"
-        );
+        (, int24 currentTick,,,,,) = oracle.slot0();
+        assertEq(derivedTick, currentTick, "Derived tick from observations should match slot0 tick");
     }
 
     function testObserveReturnsValidData() public {
@@ -110,16 +96,10 @@ contract PythToV3OracleTest is Test {
         secondsAgos[3] = 600; // 10 minutes ago
         secondsAgos[4] = 1800; // 30 minutes ago
 
-        (int56[] memory tickCumulatives, uint160[] memory liquidityCumulatives) = oracle.observe(
-            secondsAgos
-        );
+        (int56[] memory tickCumulatives, uint160[] memory liquidityCumulatives) = oracle.observe(secondsAgos);
 
         assertEq(tickCumulatives.length, secondsAgos.length, "Should return same length arrays");
-        assertEq(
-            liquidityCumulatives.length,
-            secondsAgos.length,
-            "Should return same length arrays"
-        );
+        assertEq(liquidityCumulatives.length, secondsAgos.length, "Should return same length arrays");
 
         // All liquidity cumulatives should be 0
         for (uint256 i = 0; i < liquidityCumulatives.length; i++) {
@@ -128,11 +108,7 @@ contract PythToV3OracleTest is Test {
 
         // Tick cumulatives should be decreasing (older timestamps = smaller cumulatives)
         for (uint256 i = 0; i < tickCumulatives.length - 1; i++) {
-            assertGt(
-                tickCumulatives[i],
-                tickCumulatives[i + 1],
-                "Newer observations should have larger cumulatives"
-            );
+            assertGt(tickCumulatives[i], tickCumulatives[i + 1], "Newer observations should have larger cumulatives");
         }
 
         // TODO: Test that the TWAP = Pyth price
@@ -144,13 +120,13 @@ contract PythToV3OracleTest is Test {
         secondsAgos[0] = 0; // now
         secondsAgos[1] = 600; // 10 minutes ago
 
-        (int56[] memory tickCumulatives, ) = oracle.observe(secondsAgos);
+        (int56[] memory tickCumulatives,) = oracle.observe(secondsAgos);
 
         // Calculate TWAP manually
         int24 twap = int24((tickCumulatives[0] - tickCumulatives[1]) / int56(600));
 
         // Should equal current tick since we use same tick for all observations
-        (, int24 currentTick, , , , , ) = oracle.slot0();
+        (, int24 currentTick,,,,,) = oracle.slot0();
         assertEq(twap, currentTick, "TWAP should equal current tick");
     }
 
@@ -169,14 +145,14 @@ contract PythToV3OracleTest is Test {
         secondsAgos[0] = secondsAgo1;
         secondsAgos[1] = secondsAgo2;
 
-        (int56[] memory tickCumulatives, ) = oracle.observe(secondsAgos);
+        (int56[] memory tickCumulatives,) = oracle.observe(secondsAgos);
 
         // Calculate TWAP manually
         uint32 timeDiff = secondsAgo2 - secondsAgo1;
         int24 twap = int24((tickCumulatives[0] - tickCumulatives[1]) / int56(uint56(timeDiff)));
 
         // Should equal current tick since we use same tick for all observations
-        (, int24 currentTick, , , , , ) = oracle.slot0();
+        (, int24 currentTick,,,,,) = oracle.slot0();
         assertEq(twap, currentTick, "TWAP should equal current tick for any time period");
     }
 
@@ -184,9 +160,7 @@ contract PythToV3OracleTest is Test {
 
     function testObserveEmptyArray() public {
         uint32[] memory emptyArray = new uint32[](0);
-        (int56[] memory tickCumulatives, uint160[] memory liquidityCumulatives) = oracle.observe(
-            emptyArray
-        );
+        (int56[] memory tickCumulatives, uint160[] memory liquidityCumulatives) = oracle.observe(emptyArray);
 
         assertEq(tickCumulatives.length, 0, "Should return empty array");
         assertEq(liquidityCumulatives.length, 0, "Should return empty array");
@@ -198,9 +172,7 @@ contract PythToV3OracleTest is Test {
             largeArray[i] = uint32(i * 60); // Every minute for 100 minutes
         }
 
-        (int56[] memory tickCumulatives, uint160[] memory liquidityCumulatives) = oracle.observe(
-            largeArray
-        );
+        (int56[] memory tickCumulatives, uint160[] memory liquidityCumulatives) = oracle.observe(largeArray);
 
         assertEq(tickCumulatives.length, 100, "Should handle large arrays");
         assertEq(liquidityCumulatives.length, 100, "Should handle large arrays");
@@ -214,47 +186,39 @@ contract PythToV3OracleTest is Test {
         oracle.increaseObservationCardinalityNext(type(uint16).max);
 
         // Values shouldn't change since it's a no-op
-        (, , , uint16 obsCard, uint16 obsCardNext, , ) = oracle.slot0();
+        (,,, uint16 obsCard, uint16 obsCardNext,,) = oracle.slot0();
         assertEq(obsCard, 65535, "observationCardinality unchanged");
         assertEq(obsCardNext, 8, "observationCardinalityNext unchanged");
     }
 
     function testPriceConsistencyAcrossTime() public {
         // Record initial values
-        (, int24 initialTick, , , , , ) = oracle.slot0();
+        (, int24 initialTick,,,,, ) = oracle.slot0();
 
         // Fast forward time
         vm.warp(block.timestamp + 1000);
 
         // Values should be the same (since we use current Pyth price)
-        (, int24 laterTick, , , , , ) = oracle.slot0();
+        (, int24 laterTick,,,,, ) = oracle.slot0();
         assertEq(laterTick, initialTick, "Tick should be consistent across time (same Pyth round)");
     }
 
     function testPriceComparisonWithUniswapPool() public {
         // Get price from our oracle
-        (, int24 oracleTick, , , , , ) = oracle.slot0();
+        (, int24 oracleTick,,,,, ) = oracle.slot0();
         uint160 oracleSqrtPriceX96 = TickMath.getSqrtRatioAtTick(oracleTick);
 
         // Get price from actual Uniswap V3 ETH/USDC pool
-        (uint160 poolSqrtPriceX96, , , , , , ) = ethUsdcPool.slot0();
+        (uint160 poolSqrtPriceX96,,,,,, ) = ethUsdcPool.slot0();
 
         // Convert to human-readable prices for comparison
         // For ETH/USD: price = (sqrtPriceX96)^2 / 2^192
         // 1) Oracle price = USD per ETH:
-        uint256 oraclePrice = FullMath.mulDiv(
-            uint256(oracleSqrtPriceX96),
-            uint256(oracleSqrtPriceX96),
-            1 << 192
-        );
+        uint256 oraclePrice = FullMath.mulDiv(uint256(oracleSqrtPriceX96), uint256(oracleSqrtPriceX96), 1 << 192);
         // 2) Pool raw ratio = (token1/token0)*(10^dec0/10^dec1):
         //    token0 = USDC (6 decimals), token1 = WETH (18 decimals)
         //    so raw = (WETH/USDC)*1e12
-        uint256 poolRaw = FullMath.mulDiv(
-            uint256(poolSqrtPriceX96),
-            uint256(poolSqrtPriceX96),
-            1 << 192
-        );
+        uint256 poolRaw = FullMath.mulDiv(uint256(poolSqrtPriceX96), uint256(poolSqrtPriceX96), 1 << 192);
         // 3) Match the decimals to Pyth's and flip token order to USD per ETH:
         //    USD/ETH = (1 / (WETH/USDC)) = 1e12 / poolRaw
         uint256 poolPrice = FullMath.mulDiv(

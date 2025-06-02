@@ -47,7 +47,6 @@ contract PythToV3Oracle {
         )
     {
         unchecked {
-          // TODO: how many bits of precision do we need again? using max for now:
           tick = pythPriceToTick(getPythPrice());
           // NOTE: that this is tick-snapped and less precise - the opposite of typical
           // slot0 responses, where `tick` loses some of `sqrtPrice`'s precision
@@ -73,9 +72,7 @@ contract PythToV3Oracle {
     /// @return tickCumulative The tick multiplied by seconds elapsed for the life of the pool as of the observation timestamp.
     /// @return secondsPerLiquidityCumulativeX128 The seconds per in range liquidity for the life of the pool (always 0 in V4)
     /// @return initialized Whether the observation has been initialized and the values are safe to use
-    function observations(
-        uint256 index
-    )
+    function observations(uint256 index)
         external
         view
         returns (
@@ -90,9 +87,8 @@ contract PythToV3Oracle {
             // Index 0 was 65534 seconds ago, and the max index was now
             blockTimestamp = uint32(block.timestamp - 65534 + index);
             tickCumulative =
-                // TODO: how many bits of precision do we need again? using max for now:
-                int56(pythPriceToTick(getPythPrice())) *
-                int56(int32(blockTimestamp));
+             int56(pythPriceToTick(getPythPrice())) *
+             int56(int32(blockTimestamp));
 
             // Always 0 in v4
             secondsPerLiquidityCumulativeX128 = 0;
@@ -105,29 +101,21 @@ contract PythToV3Oracle {
     /// @param secondsAgos From how long ago each cumulative tick and liquidity value should be returned
     /// @return tickCumulatives Cumulative tick values as of each `secondsAgos` from the current block timestamp
     /// @return secondsPerLiquidityCumulativeX128s Cumulative seconds per liquidity-in-range value (always empty in V4)
-    function observe(
-        uint32[] calldata secondsAgos
-    )
+    function observe(uint32[] calldata secondsAgos)
         external
         view
-        returns (
-            int56[] memory tickCumulatives,
-            uint160[] memory secondsPerLiquidityCumulativeX128s
-        )
+        returns (int56[] memory tickCumulatives, uint160[] memory secondsPerLiquidityCumulativeX128s)
     {
         unchecked {
             tickCumulatives = new int56[](secondsAgos.length);
 
-            // TODO: how many bits of precision do we need again? doing max for now:
             int24 currentTick = pythPriceToTick(getPythPrice());
 
             for (uint256 i = 0; i < secondsAgos.length; i++) {
                 // Use the same current tick for all observations
                 // The cumulative = tick * timestamp at that point in time
                 // This ensures TWAP calculations will always result in the current tick
-                tickCumulatives[i] =
-                    int56(currentTick) *
-                    int56(int256(block.timestamp - secondsAgos[i]));
+                tickCumulatives[i] = int56(currentTick) * int56(int256(block.timestamp - secondsAgos[i]));
             }
 
             return (tickCumulatives, new uint160[](secondsAgos.length));
@@ -172,10 +160,7 @@ contract PythToV3Oracle {
     /// @param argX128 The Q128.128 fixed-point number in the range (0, 2**128) to calculate the log of
     /// @param precision The bits of precision with which to compute the result, max 63 (`err <≈ 2^-precision * log₂(1.0001)⁻¹`)
     /// @return The absolute value of log with base `1.0001` for `argX128/2^128`
-    function log_1p0001(
-        uint256 argX128,
-        uint256 precision
-    ) internal pure returns (int256) {
+    function log_1p0001(uint256 argX128, uint256 precision) internal pure returns (int256) {
         unchecked {
             // =[log₂(x)] =MSB(x)
             int256 log2_res = int256(FixedPointMathLib.log2(argX128));
