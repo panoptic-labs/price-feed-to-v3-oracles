@@ -116,21 +116,21 @@ contract PythToV3Oracle {
         )
     {
         unchecked {
-          tickCumulatives = new int56[](secondsAgos.length);
+            tickCumulatives = new int56[](secondsAgos.length);
 
-          // TODO: how many bits of precision do we need again? doing max for now:
-          int24 currentTick = pythPriceToTick(getPythPrice());
+            // TODO: how many bits of precision do we need again? doing max for now:
+            int24 currentTick = pythPriceToTick(getPythPrice());
 
-          for (uint256 i = 0; i < secondsAgos.length; i++) {
-              // Use the same current tick for all observations
-              // The cumulative = tick * timestamp at that point in time
-              // This ensures TWAP calculations will always result in the current tick
-              tickCumulatives[i] =
-                  int56(currentTick) *
-                  int56(int256(block.timestamp - secondsAgos[i]));
-          }
+            for (uint256 i = 0; i < secondsAgos.length; i++) {
+                // Use the same current tick for all observations
+                // The cumulative = tick * timestamp at that point in time
+                // This ensures TWAP calculations will always result in the current tick
+                tickCumulatives[i] =
+                    int56(currentTick) *
+                    int56(int256(block.timestamp - secondsAgos[i]));
+            }
 
-          return (tickCumulatives, new uint160[](secondsAgos.length));
+            return (tickCumulatives, new uint160[](secondsAgos.length));
         }
     }
 
