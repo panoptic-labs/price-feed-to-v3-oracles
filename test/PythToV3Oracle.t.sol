@@ -76,8 +76,8 @@ contract PythToV3OracleTest is Test {
             assertLe(blockTimestamp, block.timestamp, "blockTimestamp shouldn't be in future");
             assertEq(
                 blockTimestamp,
-                uint32(block.timestamp - i),
-                "blockTimestamp should be now - index"
+                uint32(block.timestamp - 65534 + i),
+                "blockTimestamp should be now - 65534 + index"
             );
 
             // tickCumulative should be reasonable
@@ -91,7 +91,7 @@ contract PythToV3OracleTest is Test {
         (uint32 ts1, int56 cumulative1, , ) = oracle.observations(1);
 
         // Calculate the tick from cumulative difference
-        int24 derivedTick = int24((cumulative0 - cumulative1) / int56(uint56(ts0 - ts1)));
+        int24 derivedTick = int24((cumulative1 - cumulative0) / int56(uint56(ts1 - ts0)));
 
         // Should match current tick from slot0
         (, int24 currentTick, , , , , ) = oracle.slot0();

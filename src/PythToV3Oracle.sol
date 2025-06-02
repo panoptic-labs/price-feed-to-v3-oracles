@@ -84,7 +84,8 @@ contract PythToV3Oracle {
         )
     {
         // Use a blockTimestamp close to now, but unique per-observation
-        blockTimestamp = uint32(block.timestamp - index);
+        // Index 0 was 65534 seconds ago, and the max index was now
+        blockTimestamp = uint32(block.timestamp - 65534 + index);
         tickCumulative =
             // TODO: how many bits of precision do we need again? using max for now:
             int56(pythPriceToTick(getPythPrice())) *
