@@ -52,8 +52,7 @@ contract PythToV3OracleTest is Test {
         uint160 lower = uint160(FullMath.mulDiv(sqrtPriceFromTick, uint160(10_000), uint160(10_001)));
         uint160 upper = uint160(FullMath.mulDiv(sqrtPriceFromTick, uint160(10_001), uint160(10_000)));
         assertTrue(
-            sqrtPriceX96 >= lower && sqrtPriceX96 <= upper,
-            "sqrtPrice not within one tick of TickMath roundtrip"
+            sqrtPriceX96 >= lower && sqrtPriceX96 <= upper, "sqrtPrice not within one tick of TickMath roundtrip"
         );
     }
 
@@ -193,23 +192,23 @@ contract PythToV3OracleTest is Test {
 
     function testPriceConsistencyAcrossTime() public {
         // Record initial values
-        (, int24 initialTick,,,,, ) = oracle.slot0();
+        (, int24 initialTick,,,,,) = oracle.slot0();
 
         // Fast forward time
         vm.warp(block.timestamp + 1000);
 
         // Values should be the same (since we use current Pyth price)
-        (, int24 laterTick,,,,, ) = oracle.slot0();
+        (, int24 laterTick,,,,,) = oracle.slot0();
         assertEq(laterTick, initialTick, "Tick should be consistent across time (same Pyth round)");
     }
 
     function testPriceComparisonWithUniswapPool() public {
         // Get price from our oracle
-        (, int24 oracleTick,,,,, ) = oracle.slot0();
+        (, int24 oracleTick,,,,,) = oracle.slot0();
         uint160 oracleSqrtPriceX96 = TickMath.getSqrtRatioAtTick(oracleTick);
 
         // Get price from actual Uniswap V3 ETH/USDC pool
-        (uint160 poolSqrtPriceX96,,,,,, ) = ethUsdcPool.slot0();
+        (uint160 poolSqrtPriceX96,,,,,,) = ethUsdcPool.slot0();
 
         // Convert to human-readable prices for comparison
         // For ETH/USD: price = (sqrtPriceX96)^2 / 2^192

@@ -47,22 +47,22 @@ contract PythToV3Oracle {
         )
     {
         unchecked {
-          tick = pythPriceToTick(getPythPrice());
-          // NOTE: that this is tick-snapped and less precise - the opposite of typical
-          // slot0 responses, where `tick` loses some of `sqrtPrice`'s precision
-          sqrtPriceX96 = TickMath.getSqrtRatioAtTick(tick);
+            tick = pythPriceToTick(getPythPrice());
+            // NOTE: that this is tick-snapped and less precise - the opposite of typical
+            // slot0 responses, where `tick` loses some of `sqrtPrice`'s precision
+            sqrtPriceX96 = TickMath.getSqrtRatioAtTick(tick);
 
-          // Always return the max index
-          observationIndex = 65534;
-          // Always return the length of the observations array, so that callers always roll over
-          observationCardinality = 65535;
-          // This value shouldn't be used by callers given the above
-          observationCardinalityNext = 8;
+            // Always return the max index
+            observationIndex = 65534;
+            // Always return the length of the observations array, so that callers always roll over
+            observationCardinality = 65535;
+            // This value shouldn't be used by callers given the above
+            observationCardinalityNext = 8;
 
-          // not used in v4, so always 0
-          feeProtocol = 0;
-          // always true in v4
-          unlocked = true;
+            // not used in v4, so always 0
+            feeProtocol = 0;
+            // always true in v4
+            unlocked = true;
         }
     }
 
@@ -86,9 +86,7 @@ contract PythToV3Oracle {
             // Use a blockTimestamp close to now, but unique per-observation
             // Index 0 was 65534 seconds ago, and the max index was now
             blockTimestamp = uint32(block.timestamp - 65534 + index);
-            tickCumulative =
-             int56(pythPriceToTick(getPythPrice())) *
-             int56(int32(blockTimestamp));
+            tickCumulative = int56(pythPriceToTick(getPythPrice())) * int56(int32(blockTimestamp));
 
             // Always 0 in v4
             secondsPerLiquidityCumulativeX128 = 0;
@@ -190,7 +188,7 @@ contract PythToV3Oracle {
             for (uint256 i = 63; i > iterBound; i--) {
                 argX128 = (argX128 ** 2) >> 127;
                 uint256 bit = argX128 >> 128;
-                log2_res =  log2_res | int256(bit << i);
+                log2_res = log2_res | int256(bit << i);
                 argX128 >>= bit;
             }
 
