@@ -125,6 +125,11 @@ contract PythToV3Oracle {
     function getPythPrice() internal view returns (int64) {
         PythStructs.Price memory price = pyth.getPriceUnsafe(priceFeedId);
 
+        // Revert if price is negative - we don't handle negative prices
+        if (price.price <= 0) {
+            revert("Invalid price: negative or zero price from Pyth");
+        }
+
         // TODO: Note, we get a publishTime back on the returned PythStructs.price too -
         // we could do a stale check and revert here if we wanted.
 
@@ -136,19 +141,12 @@ contract PythToV3Oracle {
     /// @return tick The corresponding Uniswap V3 tick
     function pythPriceToTick(int64 price) internal pure returns (int24) {
         unchecked {
-            // Handle negative prices by taking absolute value and negating result
-            bool isNegative = price < 0;
-            uint64 absPrice = uint64(isNegative ? -price : price);
-
             // Pyth prices have 8 decimals, so we need to scale to get the actual price
             // Convert to Q128.128 format: (price * 2^128) / 10^8
-            uint256 priceX128 = (uint256(absPrice) << 128) / (10 ** DECIMALS);
+            uint256 priceX128 = (uint256(uint64(price)) << 128) / (10 ** DECIMALS);
 
             // TODO: what precision to use here? using max for now:
             int256 tick = log_1p0001(priceX128, 63);
-
-            // Apply sign
-            if (isNegative) tick = -tick;
 
             return int24(tick);
         }
