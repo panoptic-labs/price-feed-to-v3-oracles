@@ -21,11 +21,14 @@ contract PythToV3OracleTest is Test {
     IUniswapV3Pool ethUsdcPool = IUniswapV3Pool(0x65081CB48d74A32e9CCfED75164b8c09972DBcF1);
     // Revert if the price is >7200s <=> 2hrs old, as the ETH<>USDC feed should update every hour
     uint256 maxPythPriceAge = 7200;
+    // In the ETH/USDC v4 market this test is written around, token0 has 18 decimals and token1 has 6
+    int8 decimalDifferenceFromToken0ToToken1 = -12;
 
     function setUp() public {
         uint256 forkId = vm.createFork(vm.rpcUrl("unichain"));
         vm.selectFork(forkId);
-        oracle = new PythToV3Oracle(pyth, ethUsdPriceFeedId, maxPythPriceAge, 18, 6, false);
+        oracle =
+            new PythToV3Oracle(pyth, ethUsdPriceFeedId, maxPythPriceAge, decimalDifferenceFromToken0ToToken1, false);
     }
 
     function testSlot0ReturnsValidPrice() public {

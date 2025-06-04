@@ -19,8 +19,7 @@ contract Deploy is Script {
             0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace,
             // Revert if prices >2hrs old
             7200,
-            18, // ETH decimals
-            6, // USDC decimals
+            -12, // token1<=>USDC decimals (6) minus token0<=>ETH decimals (18)
             false // No need to invert - the Pyth feed returns USD per ETH, and the Uni pool is USDC (token1) / ETH (token0)
         );
 

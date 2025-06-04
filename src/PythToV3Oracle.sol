@@ -18,11 +18,8 @@ contract PythToV3Oracle {
     /// @notice The max age we permit for a Pyth price before price reads revert
     uint256 public immutable maxPythPriceAge;
 
-    /// @notice Number of decimals for token0
-    uint8 public immutable token0Decimals;
-
-    /// @notice Number of decimals for token1
-    uint8 public immutable token1Decimals;
+    /// @notice In the target market this oracle is supposed to imitate, token1.decimals - token0.decimals
+    int8 public immutable decimalDifferenceFromToken0ToToken1;
 
     /// @notice Whether to invert the token0/token1 ordering (negate the tick)
     bool public immutable invertTokenOrder;
@@ -31,22 +28,19 @@ contract PythToV3Oracle {
     /// @param _pyth The Pyth contract to read price data from
     /// @param _priceFeedId The Pyth price feed ID for the desired trading pair
     /// @param _maxPythPriceAge The max age we permit for a Pyth price before price reads revert
-    /// @param _token0Decimals Number of decimals for token0
-    /// @param _token1Decimals Number of decimals for token1
+    /// @param _decimalDifferenceFromToken0ToToken1 In the target market, token1.decimals - token0.decimals
     /// @param _invertTokenOrder Whether to invert the token0/token1 ordering
     constructor(
         IPyth _pyth,
         bytes32 _priceFeedId,
         uint256 _maxPythPriceAge,
-        uint8 _token0Decimals,
-        uint8 _token1Decimals,
+        int8 _decimalDifferenceFromToken0ToToken1,
         bool _invertTokenOrder
     ) {
         pyth = _pyth;
         priceFeedId = _priceFeedId;
         maxPythPriceAge = _maxPythPriceAge;
-        token0Decimals = _token0Decimals;
-        token1Decimals = _token1Decimals;
+        decimalDifferenceFromToken0ToToken1 = _decimalDifferenceFromToken0ToToken1;
         invertTokenOrder = _invertTokenOrder;
     }
 
@@ -175,16 +169,14 @@ contract PythToV3Oracle {
             // Adjust for token decimals difference
             // V3 prices are token1/token0 in raw units (wei), not whole tokens
             // So we need to scale by 10^(token1Decimals - token0Decimals)
-            int8 decimalDiff = int8(token1Decimals) - int8(token0Decimals);
-
-            if (decimalDiff > 0) {
+            if (decimalDifferenceFromToken0ToToken1 > 0) {
                 // token1 has more decimals, multiply price
-                priceX128 = priceX128 * (10 ** uint256(uint8(decimalDiff)));
-            } else if (decimalDiff < 0) {
+                priceX128 = priceX128 * (10 ** uint256(uint8(decimalDifferenceFromToken0ToToken1)));
+            } else if (decimalDifferenceFromToken0ToToken1 < 0) {
                 // token0 has more decimals, divide price
-                priceX128 = priceX128 / (10 ** uint256(uint8(-decimalDiff)));
+                priceX128 = priceX128 / (10 ** uint256(uint8(-decimalDifferenceFromToken0ToToken1)));
             }
-            // If decimalDiff == 0, no adjustment needed
+            // If decimalDifferenceFromToken0ToToken1 == 0, no adjustment needed
 
             // Precision of 13 keeps the err <= 0.846169235035 tick - e.g., we're within 1 tick
             int256 tick = log_1p0001(priceX128, 13);
