@@ -212,8 +212,8 @@ contract PythToV3OracleTest is Test {
         // Because _ETH_ (0x00...) is the token for that test oracle, not WETH
         poolTick = -poolTick;
 
-        uint256 oraclePrice = tickToPrice(oracleTick);
-        uint256 poolPrice = tickToPrice(poolTick);
+        uint256 oraclePrice = convertRawUsdcPerWeiTickToWholeUnitPrice(oracleTick);
+        uint256 poolPrice = convertRawUsdcPerWeiTickToWholeUnitPrice(poolTick);
 
         uint256 priceDiff = oraclePrice > poolPrice ? oraclePrice - poolPrice : poolPrice - oraclePrice;
 
@@ -222,11 +222,9 @@ contract PythToV3OracleTest is Test {
         assertLt(priceDiff * 100, poolPrice, "Oracle price should be within 1% of Uniswap pool price");
     }
 
-    function tickToPrice(int24 tick) internal pure returns (uint256) {
+    function convertRawUsdcPerWeiTickToWholeUnitPrice(int24 tick) internal pure returns (uint256) {
         uint160 sqrtPX96 = TickMath.getSqrtRatioAtTick(tick);
 
-        // 1 << 192   = 2^192 (denominator)
-        // 10**12     = 1e12  (converts wei-per-wei to USDC-with-6-decimals)
         return FullMath.mulDiv(uint256(sqrtPX96) * uint256(sqrtPX96), 10 ** 12, 1 << 192);
     }
 
