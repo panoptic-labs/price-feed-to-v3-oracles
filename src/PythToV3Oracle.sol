@@ -139,9 +139,9 @@ contract PythToV3Oracle {
         unchecked {
             // Pyth prices have 8 decimals, so we need to scale to get the actual price
             // Convert to Q128.128 format: (price * 2^128) / 10^8
-            uint256 priceX128 = decimals < 0 ?
-              (uint256(uint64(price)) << 128) / uint256(10 ** uint32(-decimals)) :
-              (uint256(uint64(price)) << 128) * uint256(10 ** uint32(decimals));
+            uint256 priceX128 = decimals < 0
+                ? (uint256(uint64(price)) << 128) / uint256(10 ** uint32(-decimals))
+                : (uint256(uint64(price)) << 128) * uint256(10 ** uint32(decimals));
 
             // Precision of 13 keeps the err <= 0.846169235035 tick - e.g., we're within 1 tick
             int256 tick = log_1p0001(priceX128, 13);
