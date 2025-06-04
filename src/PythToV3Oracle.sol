@@ -15,12 +15,17 @@ contract PythToV3Oracle {
     /// @notice The Pyth price feed ID for the trading pair
     bytes32 public immutable priceFeedId;
 
+    /// @notice The max age we permit for a Pyth price before price reads here revert
+    uint public immutable maxPythPriceAge;
+
     /// @notice Initializes the adapter with the Pyth contract and price feed ID.
     /// @param _pyth The Pyth contract to read price data from
     /// @param _priceFeedId The Pyth price feed ID for the desired trading pair
-    constructor(IPyth _pyth, bytes32 _priceFeedId) {
+    /// @param _maxPythPriceAge The Pyth price feed ID for the desired trading pair
+    constructor(IPyth _pyth, bytes32 _priceFeedId, uint _maxPythPriceAge) {
         pyth = _pyth;
         priceFeedId = _priceFeedId;
+        maxPythPriceAge = _maxPythPriceAge;
     }
 
     /// @notice Emulates the behavior of the exposed zeroth slot of a Uniswap V3 pool.
@@ -121,8 +126,8 @@ contract PythToV3Oracle {
     /// @notice Get the current price from Pyth with adjustable variation.
     /// @return The current price from Pyth, converted to a tick
     function getPythPriceAsTick() internal view returns (int24) {
-        // getPriceNoOlderThan will revert if the price is >7200s <=> 2hrs old
-        PythStructs.Price memory price = pyth.getPriceNoOlderThan(priceFeedId, 7200);
+        // getPriceNoOlderThan will revert if the price is >maxPythPriceAge seconds old
+        PythStructs.Price memory price = pyth.getPriceNoOlderThan(priceFeedId, maxPythPriceAge);
 
         // Revert if price is negative - we don't handle negative prices
         if (price.price <= 0) {
@@ -137,8 +142,8 @@ contract PythToV3Oracle {
     /// @return tick The corresponding Uniswap V3 tick
     function pythPriceToTick(int64 price, int32 decimals) internal pure returns (int24) {
         unchecked {
-            // Pyth prices have 8 decimals, so we need to scale to get the actual price
-            // Convert to Q128.128 format: (price * 2^128) / 10^8
+            // Pyth prices are returned in two components, raw units and decimals, so we need to scale to get the actual price
+            // Convert to Q128.128 format: (price * 2^128) / 10^decimals
             uint256 priceX128 = decimals < 0
                 ? (uint256(uint64(price)) << 128) / uint256(10 ** uint32(-decimals))
                 : (uint256(uint64(price)) << 128) * uint256(10 ** uint32(decimals));

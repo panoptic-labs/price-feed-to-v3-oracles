@@ -23,7 +23,8 @@ contract PythToV3OracleTest is Test {
     function setUp() public {
         uint256 forkId = vm.createFork(vm.rpcUrl("unichain"));
         vm.selectFork(forkId);
-        oracle = new PythToV3Oracle(pyth, ethUsdPriceFeedId);
+        // Revert if the price is >7200s <=> 2hrs old, as the ETH<>USDC feed should update every hour
+        oracle = new PythToV3Oracle(pyth, ethUsdPriceFeedId, 7200);
     }
 
     function testSlot0ReturnsValidPrice() public {
