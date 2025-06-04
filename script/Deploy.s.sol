@@ -21,7 +21,7 @@ contract Deploy is Script {
             7200,
             18, // ETH decimals
             6, // USDC decimals
-            false // No need to revert - the Pyth feed returns USD per ETH, and the Uni pool is USDC (token1) / ETH (token0)
+            false // No need to invert - the Pyth feed returns USD per ETH, and the Uni pool is USDC (token1) / ETH (token0)
         );
 
         console.log("PythToV3Oracle deployed at:", address(oracle));
