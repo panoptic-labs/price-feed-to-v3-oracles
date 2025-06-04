@@ -15,14 +15,14 @@ contract PythToV3Oracle {
     /// @notice The Pyth price feed ID for the trading pair
     bytes32 public immutable priceFeedId;
 
-    /// @notice The max age we permit for a Pyth price before price reads here revert
-    uint public immutable maxPythPriceAge;
+    /// @notice The max age we permit for a Pyth price before price reads revert
+    uint256 public immutable maxPythPriceAge;
 
     /// @notice Initializes the adapter with the Pyth contract and price feed ID.
     /// @param _pyth The Pyth contract to read price data from
     /// @param _priceFeedId The Pyth price feed ID for the desired trading pair
-    /// @param _maxPythPriceAge The Pyth price feed ID for the desired trading pair
-    constructor(IPyth _pyth, bytes32 _priceFeedId, uint _maxPythPriceAge) {
+    /// @param _maxPythPriceAge The max age we permit for a Pyth price before price reads revert
+    constructor(IPyth _pyth, bytes32 _priceFeedId, uint256 _maxPythPriceAge) {
         pyth = _pyth;
         priceFeedId = _priceFeedId;
         maxPythPriceAge = _maxPythPriceAge;
