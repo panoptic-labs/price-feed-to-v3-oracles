@@ -59,8 +59,9 @@ contract PythToV3Oracle {
             observationIndex = 65534;
             // Always return the length of the observations array, so that callers always roll over
             observationCardinality = 65535;
-            // This value shouldn't be used by callers given the above
-            observationCardinalityNext = 8;
+            // This value shouldn't be used by callers given the above, but: return 65535 which matches
+            // what Uniswap pools return when all observations are filled.
+            observationCardinalityNext = 65535;
 
             // not used in v4, so always 0
             feeProtocol = 0;

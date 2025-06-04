@@ -12,3 +12,6 @@ evm_version = "cancun"
 
 [rpc_endpoints]
 unichain = "https://unichain-mainnet.g.alchemy.com/v2/VN5K96b647acOyIXfX45zBdO53Dx7ZKm"
+
+[etherscan]
+unichain = { key = "${UNISCAN_API_KEY}", url = "https://uniscan.xyz/api" }

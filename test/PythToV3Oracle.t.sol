@@ -44,7 +44,7 @@ contract PythToV3OracleTest is Test {
         assertEq(feeProtocol, 0, "feeProtocol always 0");
         assertTrue(unlocked, "unlocked always true");
         assertEq(obsCard, 65535, "observationCardinality should be 8");
-        assertEq(obsCardNext, 8, "observationCardinalityNext should be 8");
+        assertEq(obsCardNext, 65535, "observationCardinalityNext should be 8");
 
         // Verify tick and sqrtPrice are consistent
         uint160 sqrtPriceFromTick = TickMath.getSqrtRatioAtTick(tick);
@@ -180,7 +180,7 @@ contract PythToV3OracleTest is Test {
         // Values shouldn't change since it's a no-op
         (,,, uint16 obsCard, uint16 obsCardNext,,) = oracle.slot0();
         assertEq(obsCard, 65535, "observationCardinality unchanged");
-        assertEq(obsCardNext, 8, "observationCardinalityNext unchanged");
+        assertEq(obsCardNext, 65535, "observationCardinalityNext unchanged");
     }
 
     function testPriceConsistencyAcrossTime() public {
