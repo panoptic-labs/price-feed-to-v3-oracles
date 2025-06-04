@@ -15,8 +15,6 @@ contract PythToV3Oracle {
     /// @notice The Pyth price feed ID for the trading pair
     bytes32 public immutable priceFeedId;
 
-    uint8 public constant DECIMALS = 8;
-
     /// @notice Initializes the adapter with the Pyth contract and price feed ID.
     /// @param _pyth The Pyth contract to read price data from
     /// @param _priceFeedId The Pyth price feed ID for the desired trading pair
@@ -47,7 +45,7 @@ contract PythToV3Oracle {
         )
     {
         unchecked {
-            tick = pythPriceToTick(getPythPrice());
+            tick = getPythPriceAsTick();
             // NOTE: that this is tick-snapped and less precise - the opposite of typical
             // slot0 responses, where `tick` loses some of `sqrtPrice`'s precision
             sqrtPriceX96 = TickMath.getSqrtRatioAtTick(tick);
@@ -86,7 +84,7 @@ contract PythToV3Oracle {
             // Use a blockTimestamp close to now, but unique per-observation
             // Index 0 was 65534 seconds ago, and the max index was now
             blockTimestamp = uint32(block.timestamp - 65534 + index);
-            tickCumulative = int56(pythPriceToTick(getPythPrice())) * int56(int32(blockTimestamp));
+            tickCumulative = int56(getPythPriceAsTick()) * int56(int32(blockTimestamp));
 
             // Always 0 in v4
             secondsPerLiquidityCumulativeX128 = 0;
@@ -107,7 +105,7 @@ contract PythToV3Oracle {
         unchecked {
             tickCumulatives = new int56[](secondsAgos.length);
 
-            int24 currentTick = pythPriceToTick(getPythPrice());
+            int24 currentTick = getPythPriceAsTick();
 
             for (uint256 i = 0; i < secondsAgos.length; i++) {
                 // Use the same current tick for all observations
@@ -121,32 +119,32 @@ contract PythToV3Oracle {
     }
 
     /// @notice Get the current price from Pyth with adjustable variation.
-    /// @return The current price from Pyth
-    function getPythPrice() internal view returns (int64) {
-        PythStructs.Price memory price = pyth.getPriceUnsafe(priceFeedId);
+    /// @return The current price from Pyth, converted to a tick
+    function getPythPriceAsTick() internal view returns (int24) {
+        // getPriceNoOlderThan will revert if the price is >7200s <=> 2hrs old
+        PythStructs.Price memory price = pyth.getPriceNoOlderThan(priceFeedId, 7200);
 
         // Revert if price is negative - we don't handle negative prices
         if (price.price <= 0) {
             revert("Invalid price: negative or zero price from Pyth");
         }
 
-        // TODO: Note, we get a publishTime back on the returned PythStructs.price too -
-        // we could do a stale check and revert here if we wanted.
-
-        return price.price;
+        return pythPriceToTick(price.price, price.expo);
     }
 
     /// @notice Convert Pyth price directly to tick
     /// @param price Raw Pyth price (8 decimals, can be negative)
     /// @return tick The corresponding Uniswap V3 tick
-    function pythPriceToTick(int64 price) internal pure returns (int24) {
+    function pythPriceToTick(int64 price, int32 decimals) internal pure returns (int24) {
         unchecked {
             // Pyth prices have 8 decimals, so we need to scale to get the actual price
             // Convert to Q128.128 format: (price * 2^128) / 10^8
-            uint256 priceX128 = (uint256(uint64(price)) << 128) / (10 ** DECIMALS);
+            uint256 priceX128 = decimals < 0 ?
+              (uint256(uint64(price)) << 128) / uint256(10 ** uint32(-decimals)) :
+              (uint256(uint64(price)) << 128) * uint256(10 ** uint32(decimals));
 
-            // TODO: what precision to use here? using max for now:
-            int256 tick = log_1p0001(priceX128, 63);
+            // Precision of 13 keeps the err <= 0.846169235035 tick - e.g., we're within 1 tick
+            int256 tick = log_1p0001(priceX128, 13);
 
             return int24(tick);
         }
