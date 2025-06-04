@@ -151,32 +151,24 @@ contract PythToV3Oracle {
             revert("Invalid price: negative or zero price from Pyth");
         }
 
-        return pythPriceToTick(price.price, price.expo);
+        // Adjust for both both Pyth exponent, and the token decimals difference
+        // V3 prices are token1/token0 in raw units (wei), not whole tokens
+        // So we need to scale by 10^(token1Decimals - token0Decimals)
+        return pythPriceToTick(price.price, price.expo + decimalDifferenceFromToken0ToToken1);
     }
 
     /// @notice Convert Pyth price directly to tick
     /// @param price Raw Pyth price (8 decimals, cannot be negative - we required against it in getPythPriceAsTick)
-    /// @param decimals Decimal adjustment to get whole-unit price
+    /// @param decimals Decimal adjustment to get raw-unit price
     /// @return tick The corresponding Uniswap V3 tick
     function pythPriceToTick(int64 price, int32 decimals) internal view returns (int24) {
         unchecked {
             // Pyth prices are returned in two components, raw units and decimals, so we need to scale to get the actual price
-            // Convert to Q128.128 format: (price * 2^128) / 10^decimals
+            // We then also have to scale by the difference in token1's raw units and token0's
+            // Convert to Q128.128 format: (price * 2^128) / 10^(pythPrice.expo + decimalDifferenceFromToken0ToToken1)
             uint256 priceX128 = decimals < 0
                 ? (uint256(uint64(price)) << 128) / uint256(10 ** uint32(-decimals))
                 : (uint256(uint64(price)) << 128) * uint256(10 ** uint32(decimals));
-
-            // Adjust for token decimals difference
-            // V3 prices are token1/token0 in raw units (wei), not whole tokens
-            // So we need to scale by 10^(token1Decimals - token0Decimals)
-            if (decimalDifferenceFromToken0ToToken1 > 0) {
-                // token1 has more decimals, multiply price
-                priceX128 = priceX128 * (10 ** uint256(uint8(decimalDifferenceFromToken0ToToken1)));
-            } else if (decimalDifferenceFromToken0ToToken1 < 0) {
-                // token0 has more decimals, divide price
-                priceX128 = priceX128 / (10 ** uint256(uint8(-decimalDifferenceFromToken0ToToken1)));
-            }
-            // If decimalDifferenceFromToken0ToToken1 == 0, no adjustment needed
 
             // Precision of 13 keeps the err <= 0.846169235035 tick - e.g., we're within 1 tick
             int256 tick = log_1p0001(priceX128, 13);
