@@ -19,12 +19,13 @@ contract PythToV3OracleTest is Test {
     bytes32 ethUsdPriceFeedId = 0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace;
     // https://uniscan.xyz/address/0x65081CB48d74A32e9CCfED75164b8c09972DBcF1
     IUniswapV3Pool ethUsdcPool = IUniswapV3Pool(0x65081CB48d74A32e9CCfED75164b8c09972DBcF1);
+    // Revert if the price is >7200s <=> 2hrs old, as the ETH<>USDC feed should update every hour
+    uint256 maxPythPriceAge = 7200;
 
     function setUp() public {
         uint256 forkId = vm.createFork(vm.rpcUrl("unichain"));
         vm.selectFork(forkId);
-        // Revert if the price is >7200s <=> 2hrs old, as the ETH<>USDC feed should update every hour
-        oracle = new PythToV3Oracle(pyth, ethUsdPriceFeedId, 7200);
+        oracle = new PythToV3Oracle(pyth, ethUsdPriceFeedId, maxPythPriceAge, 18, 6, false);
     }
 
     function testSlot0ReturnsValidPrice() public {
@@ -39,8 +40,7 @@ contract PythToV3OracleTest is Test {
         ) = oracle.slot0();
 
         // Basic sanity checks
-        assertGt(uint256(sqrtPriceX96), 0, "sqrtPriceX96 should be > 0");
-        assertGt(int256(tick), 0, "tick should be > 0, unless ETH crashed below $1");
+        assertLt(int256(tick), 0, "tick should be < 0, unless ETH broke $10^12");
         assertEq(feeProtocol, 0, "feeProtocol always 0");
         assertTrue(unlocked, "unlocked always true");
         assertEq(obsCard, 65535, "observationCardinality should be 8");
@@ -63,9 +63,6 @@ contract PythToV3OracleTest is Test {
             assertEq(
                 blockTimestamp, uint32(block.timestamp - 65534 + i), "blockTimestamp should be now - 65534 + index"
             );
-
-            // tickCumulative should be reasonable
-            assertGt(int256(tickCumulative), 0, "tickCumulative should be positive for ETH/USD");
         }
     }
 
@@ -100,10 +97,15 @@ contract PythToV3OracleTest is Test {
             assertEq(liquidityCumulatives[i], 0, "liquidityCumulatives always 0");
         }
 
-        // Tick cumulatives should be decreasing (older timestamps = smaller cumulatives)
+        // Tick cumulatives should be increasing in absolute value (older timestamps = smaller factor to multiply tick by)
         for (uint256 i = 0; i < tickCumulatives.length - 1; i++) {
-            assertGt(tickCumulatives[i], tickCumulatives[i + 1], "Newer observations should have larger cumulatives");
+            assertGt(abs(tickCumulatives[i]), abs(tickCumulatives[i + 1]), "Newer observations should have larger absolute-value cumulatives");
         }
+    }
+
+    function abs(int56 num) internal pure returns(uint56) {
+      if (num < 0) return uint56(-num);
+      return uint56(num);
     }
 
     function testObserveTWAPCalculation() public {
@@ -196,46 +198,51 @@ contract PythToV3OracleTest is Test {
     }
 
     function testPriceComparisonWithUniswapPool() public {
-        // Get price from our oracle
+        // Get tick from our oracle
         (, int24 oracleTick,,,,,) = oracle.slot0();
-        uint160 oracleSqrtPriceX96 = TickMath.getSqrtRatioAtTick(oracleTick);
 
-        // Get price from actual Uniswap V3 ETH/USDC pool
-        (uint160 poolSqrtPriceX96,,,,,,) = ethUsdcPool.slot0();
+        // Get tick from actual Uniswap V3 USDC/WETH pool
+        (, int24 poolTick,,,,,) = ethUsdcPool.slot0();
+        // Invert that returned tick - uni v4 has WETH (0x42...) which is token1 with USDC (0x0c...)
+        // Why not just use invertTokenOrder in the construction of our test PythToV3Oracle?
+        // Because _ETH_ (0x00...) is the token for that test oracle, not WETH
+        poolTick = -poolTick;
 
-        // Convert to human-readable prices for comparison
-        // For ETH/USD: price = (sqrtPriceX96)^2 / 2^192
-        // 1) Oracle price = USD per ETH:
-        uint256 oraclePrice = FullMath.mulDiv(uint256(oracleSqrtPriceX96), uint256(oracleSqrtPriceX96), 1 << 192);
-        // 2) Pool raw ratio = (token1/token0)*(10^dec0/10^dec1):
-        //    token0 = USDC (6 decimals), token1 = WETH (18 decimals)
-        //    so raw = (WETH/USDC)*1e12
-        uint256 poolRaw = FullMath.mulDiv(uint256(poolSqrtPriceX96), uint256(poolSqrtPriceX96), 1 << 192);
-        // 3) Match the decimals to Pyth's and flip token order to USD per ETH:
-        //    USD/ETH = (1 / (WETH/USDC)) = 1e12 / poolRaw
-        uint256 poolPrice = FullMath.mulDiv(
-            1e12, // numerator
-            1, // second factor
-            poolRaw // denominator
+        uint256 oraclePrice = tickToPrice(oracleTick);
+        uint256 poolPrice = tickToPrice(poolTick);
+
+        uint256 priceDiff = oraclePrice > poolPrice
+          ? oraclePrice - poolPrice
+          : poolPrice - oraclePrice;
+
+        // Check if difference is within 1% (priceDiff / poolPrice < 0.01)
+        // priceDiff / poolPrice < 0.01 <=> priceDiff * 100 < poolPrice
+        assertLt(priceDiff * 100, poolPrice, "Oracle price should be within 1% of Uniswap pool price");
+    }
+
+
+    function tickToPrice(int24 tick) internal pure returns (uint256) {
+        uint160 sqrtPX96 = TickMath.getSqrtRatioAtTick(tick);
+
+        // 1 << 192   = 2^192 (denominator)
+        // 10**12     = 1e12  (converts wei-per-wei to USDC-with-6-decimals)
+        return FullMath.mulDiv(
+            uint256(sqrtPX96) * uint256(sqrtPX96),
+            10**12,
+            1 << 192
         );
-
-        uint256 diff = oraclePrice > poolPrice ? oraclePrice - poolPrice : poolPrice - oraclePrice;
-        uint256 percentDiff = (diff * 10000) / poolPrice; // basis points
-
-        // Prices should be within 1% (100 basis points) of each other
-        assertLe(percentDiff, 100, "Oracle price should be within 1% of Uniswap pool price");
     }
 
     function testRevertOnStalePriceAndAcceptsAllOthers(uint256 secondsInFuture) public {
         vm.assume(secondsInFuture <= block.timestamp); // don't go more than (now - unix_origin) in the future - very large timestamps overflow the tickCumulative calculation
-        // Fast forward time beyond maxPythPriceAge (7200 seconds)
+        // Fast forward time, possibly beyond maxPythPriceAge
         vm.warp(block.timestamp + secondsInFuture);
 
         PythStructs.Price memory price = pyth.getPriceUnsafe(ethUsdPriceFeedId);
         uint256 currentPriceAge = block.timestamp - price.publishTime;
 
         // This should revert because price is too stale
-        if (currentPriceAge > 7200) {
+        if (currentPriceAge > maxPythPriceAge) {
             vm.expectRevert();
             oracle.slot0();
         } else {

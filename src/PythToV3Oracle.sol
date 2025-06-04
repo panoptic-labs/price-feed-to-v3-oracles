@@ -18,14 +18,36 @@ contract PythToV3Oracle {
     /// @notice The max age we permit for a Pyth price before price reads revert
     uint256 public immutable maxPythPriceAge;
 
+    /// @notice Number of decimals for token0
+    uint8 public immutable token0Decimals;
+
+    /// @notice Number of decimals for token1
+    uint8 public immutable token1Decimals;
+
+    /// @notice Whether to invert the token0/token1 ordering (negate the tick)
+    bool public immutable invertTokenOrder;
+
     /// @notice Initializes the adapter with the Pyth contract and price feed ID.
     /// @param _pyth The Pyth contract to read price data from
     /// @param _priceFeedId The Pyth price feed ID for the desired trading pair
     /// @param _maxPythPriceAge The max age we permit for a Pyth price before price reads revert
-    constructor(IPyth _pyth, bytes32 _priceFeedId, uint256 _maxPythPriceAge) {
+    /// @param _token0Decimals Number of decimals for token0
+    /// @param _token1Decimals Number of decimals for token1
+    /// @param _invertTokenOrder Whether to invert the token0/token1 ordering
+    constructor(
+        IPyth _pyth,
+        bytes32 _priceFeedId,
+        uint256 _maxPythPriceAge,
+        uint8 _token0Decimals,
+        uint8 _token1Decimals,
+        bool _invertTokenOrder
+    ) {
         pyth = _pyth;
         priceFeedId = _priceFeedId;
         maxPythPriceAge = _maxPythPriceAge;
+        token0Decimals = _token0Decimals;
+        token1Decimals = _token1Decimals;
+        invertTokenOrder = _invertTokenOrder;
     }
 
     /// @notice Emulates the behavior of the exposed zeroth slot of a Uniswap V3 pool.
@@ -139,9 +161,10 @@ contract PythToV3Oracle {
     }
 
     /// @notice Convert Pyth price directly to tick
-    /// @param price Raw Pyth price (8 decimals, can be negative)
+    /// @param price Raw Pyth price (8 decimals, cannot be negative - we required against it in getPythPriceAsTick)
+    /// @param decimals Decimal adjustment to get whole-unit price
     /// @return tick The corresponding Uniswap V3 tick
-    function pythPriceToTick(int64 price, int32 decimals) internal pure returns (int24) {
+    function pythPriceToTick(int64 price, int32 decimals) internal view returns (int24) {
         unchecked {
             // Pyth prices are returned in two components, raw units and decimals, so we need to scale to get the actual price
             // Convert to Q128.128 format: (price * 2^128) / 10^decimals
@@ -149,8 +172,27 @@ contract PythToV3Oracle {
                 ? (uint256(uint64(price)) << 128) / uint256(10 ** uint32(-decimals))
                 : (uint256(uint64(price)) << 128) * uint256(10 ** uint32(decimals));
 
+            // Adjust for token decimals difference
+            // V3 prices are token1/token0 in raw units (wei), not whole tokens
+            // So we need to scale by 10^(token1Decimals - token0Decimals)
+            int8 decimalDiff = int8(token1Decimals) - int8(token0Decimals);
+
+            if (decimalDiff > 0) {
+                // token1 has more decimals, multiply price
+                priceX128 = priceX128 * (10 ** uint256(uint8(decimalDiff)));
+            } else if (decimalDiff < 0) {
+                // token0 has more decimals, divide price
+                priceX128 = priceX128 / (10 ** uint256(uint8(-decimalDiff)));
+            }
+            // If decimalDiff == 0, no adjustment needed
+
             // Precision of 13 keeps the err <= 0.846169235035 tick - e.g., we're within 1 tick
             int256 tick = log_1p0001(priceX128, 13);
+
+            // Invert the tick if needed (equivalent to taking reciprocal of price)
+            if (invertTokenOrder) {
+                tick = -tick;
+            }
 
             return int24(tick);
         }
