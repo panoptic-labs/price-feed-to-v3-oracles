@@ -48,13 +48,7 @@ contract PythToV3OracleTest is Test {
 
         // Verify tick and sqrtPrice are consistent
         uint160 sqrtPriceFromTick = TickMath.getSqrtRatioAtTick(tick);
-        // (The sqrtPriceX96 is more precise than the tick, so we must allow up to 1 tick tolerance)
-        // TODO: This is no longer true, remove this part
-        uint160 lower = uint160(FullMath.mulDiv(sqrtPriceFromTick, uint160(10_000), uint160(10_001)));
-        uint160 upper = uint160(FullMath.mulDiv(sqrtPriceFromTick, uint160(10_001), uint160(10_000)));
-        assertTrue(
-            sqrtPriceX96 >= lower && sqrtPriceX96 <= upper, "sqrtPrice not within one tick of TickMath roundtrip"
-        );
+        assertEq(sqrtPriceX96, sqrtPriceFromTick, "tick-snapped sqrtPrice from oracle not equal to sqrtPriceFromTick");
     }
 
     function testObservationsReturnsValidData() public {
@@ -110,8 +104,6 @@ contract PythToV3OracleTest is Test {
         for (uint256 i = 0; i < tickCumulatives.length - 1; i++) {
             assertGt(tickCumulatives[i], tickCumulatives[i + 1], "Newer observations should have larger cumulatives");
         }
-
-        // TODO: Test that the TWAP = Pyth price
     }
 
     function testObserveTWAPCalculation() public {
@@ -234,22 +226,45 @@ contract PythToV3OracleTest is Test {
         assertLe(percentDiff, 100, "Oracle price should be within 1% of Uniswap pool price");
     }
 
-    // TODO
-    function testRevertOnBadPythPrice() public {
-        // This test would require mocking the aggregator to return bad data
-        // For now, we trust that the mainnet ETH/USD feed returns valid data
-        // In a more comprehensive test suite, you'd mock this
+    function testRevertOnStalePriceAndAcceptsAllOthers(uint256 secondsInFuture) public {
+        vm.assume(secondsInFuture <= block.timestamp); // don't go more than (now - unix_origin) in the future - very large timestamps overflow the tickCumulative calculation
+        // Fast forward time beyond maxPythPriceAge (7200 seconds)
+        vm.warp(block.timestamp + secondsInFuture);
+
+        PythStructs.Price memory price = pyth.getPriceUnsafe(ethUsdPriceFeedId);
+        uint256 currentPriceAge = block.timestamp - price.publishTime;
+
+        // This should revert because price is too stale
+        if (currentPriceAge > 7200) {
+            vm.expectRevert();
+            oracle.slot0();
+        } else {
+            // Should work normally - price is fresh enough
+            (uint160 sqrtPriceX96,,,,,,) = oracle.slot0();
+            assertGt(uint256(sqrtPriceX96), 0, "Should return valid sqrtPrice");
+        }
     }
 
-    // TODO: Replace with standard lib
-    function sqrt(uint256 x) internal pure returns (uint256) {
-        if (x == 0) return 0;
-        uint256 z = (x + 1) / 2;
-        uint256 y = x;
-        while (z < y) {
-            y = z;
-            z = (x / z + z) / 2;
+    // Additional test to verify the ordering assumption
+    function testObservationsTimestampOrdering() public {
+        uint32 prevTimestamp;
+
+        // Test that timestamps increase with index
+        for (uint256 i = 0; i < 10; i++) {
+            (uint32 timestamp,,,) = oracle.observations(i);
+
+            if (i > 0) {
+                assertGt(timestamp, prevTimestamp, "Timestamps should increase with index");
+            }
+
+            // Verify the exact formula
+            uint32 expectedTimestamp = uint32(block.timestamp - 65534 + i);
+            assertEq(timestamp, expectedTimestamp, "Timestamp should match formula");
+
+            prevTimestamp = timestamp;
         }
-        return y;
     }
+
+    // TODO: In the future, we could also test that we revert for negative Pyth price,
+    // by mocking the Pyth contract. Don't feel that's necessary currently, though.
 }
