@@ -3,8 +3,8 @@ pragma solidity ^0.8.19;
 
 import "@pythnetwork/pyth-sdk-solidity/IPyth.sol";
 import "@pythnetwork/pyth-sdk-solidity/PythStructs.sol";
-
 import {TickMath} from "v3-core/libraries/TickMath.sol";
+import {FixedPointMathLib} from "solady/src/utils/FixedPointMathLib.sol";
 
 /// @title PythToV3Oracle
 /// @notice Contract that provides a Uniswap V3-compatible oracle interface on Pyth-sourced price data.
@@ -15,18 +15,21 @@ contract PythToV3Oracle {
     /// @notice The Pyth price feed ID for the trading pair
     bytes32 public immutable priceFeedId;
 
-    uint8 public constant DECIMALS = 8;
+    /// @notice The max age we permit for a Pyth price before price reads revert
+    uint256 public immutable maxPythPriceAge;
 
     /// @notice Initializes the adapter with the Pyth contract and price feed ID.
     /// @param _pyth The Pyth contract to read price data from
     /// @param _priceFeedId The Pyth price feed ID for the desired trading pair
-    constructor(IPyth _pyth, bytes32 _priceFeedId) {
+    /// @param _maxPythPriceAge The max age we permit for a Pyth price before price reads revert
+    constructor(IPyth _pyth, bytes32 _priceFeedId, uint256 _maxPythPriceAge) {
         pyth = _pyth;
         priceFeedId = _priceFeedId;
+        maxPythPriceAge = _maxPythPriceAge;
     }
 
     /// @notice Emulates the behavior of the exposed zeroth slot of a Uniswap V3 pool.
-    /// @return sqrtPriceX96 The current price of the oracle as a sqrt(currency1/currency0) Q64.96 value
+    /// @return sqrtPriceX96 A tick-snapped sqrt price of the oracle, as a sqrt(currency1/currency0) Q64.96 value
     /// @return tick The current tick of the oracle
     /// @return observationIndex The index of the last oracle observation that was written
     /// @return observationCardinality The current maximum number of observations stored in the oracle
@@ -46,19 +49,24 @@ contract PythToV3Oracle {
             bool unlocked
         )
     {
-        sqrtPriceX96 = pythPriceToSqrtRatioX96(getPythPrice());
-        tick = TickMath.getTickAtSqrtRatio(sqrtPriceX96);
+        unchecked {
+            tick = getPythPriceAsTick();
+            // NOTE: that this is tick-snapped and less precise - the opposite of typical
+            // slot0 responses, where `tick` loses some of `sqrtPrice`'s precision
+            sqrtPriceX96 = TickMath.getSqrtRatioAtTick(tick);
 
-        // TODO: what to return for these? need to look at how they're consumed in panoptic
-        // Maybe always return cardinality >= 100? Isn't that a constraint for pool readiness somewhere?
-        observationIndex = uint16(block.timestamp % 65536); // Cycling index based on time
-        observationCardinality = 8; // Match the 8-slot median queue
-        observationCardinalityNext = 8;
+            // Always return the max index
+            observationIndex = 65534;
+            // Always return the length of the observations array, so that callers always roll over
+            observationCardinality = 65535;
+            // This value shouldn't be used by callers given the above
+            observationCardinalityNext = 8;
 
-        // not used in v4, so always 0
-        feeProtocol = 0;
-        // always true in v4
-        unlocked = true;
+            // not used in v4, so always 0
+            feeProtocol = 0;
+            // always true in v4
+            unlocked = true;
+        }
     }
 
     /// @notice Returns data about a specific observation index.
@@ -67,9 +75,7 @@ contract PythToV3Oracle {
     /// @return tickCumulative The tick multiplied by seconds elapsed for the life of the pool as of the observation timestamp.
     /// @return secondsPerLiquidityCumulativeX128 The seconds per in range liquidity for the life of the pool (always 0 in V4)
     /// @return initialized Whether the observation has been initialized and the values are safe to use
-    function observations(
-        uint256 index
-    )
+    function observations(uint256 index)
         external
         view
         returns (
@@ -79,78 +85,118 @@ contract PythToV3Oracle {
             bool initialized
         )
     {
-        // Use a blockTimestamp close to now, but unique per-observation
-        blockTimestamp = uint32(block.timestamp - index);
-        tickCumulative =
-            int56(TickMath.getTickAtSqrtRatio(pythPriceToSqrtRatioX96(getPythPrice()))) *
-            int56(int32(blockTimestamp));
+        unchecked {
+            // Use a blockTimestamp close to now, but unique per-observation
+            // Index 0 was 65534 seconds ago, and the max index was now
+            blockTimestamp = uint32(block.timestamp - 65534 + index);
+            tickCumulative = int56(getPythPriceAsTick()) * int56(int32(blockTimestamp));
 
-        // Always 0 in v4
-        secondsPerLiquidityCumulativeX128 = 0;
-        // These values are always safe to use - they're just stubbed based on the chainlink price
-        initialized = true;
+            // Always 0 in v4
+            secondsPerLiquidityCumulativeX128 = 0;
+            // These values are always safe to use - they're just stubbed based on the chainlink price
+            initialized = true;
+        }
     }
 
     /// @notice Returns the cumulative tick and liquidity as of each timestamp `secondsAgo` from the current block timestamp.
     /// @param secondsAgos From how long ago each cumulative tick and liquidity value should be returned
     /// @return tickCumulatives Cumulative tick values as of each `secondsAgos` from the current block timestamp
     /// @return secondsPerLiquidityCumulativeX128s Cumulative seconds per liquidity-in-range value (always empty in V4)
-    function observe(
-        uint32[] calldata secondsAgos
-    )
+    function observe(uint32[] calldata secondsAgos)
         external
         view
-        returns (
-            int56[] memory tickCumulatives,
-            uint160[] memory secondsPerLiquidityCumulativeX128s
-        )
+        returns (int56[] memory tickCumulatives, uint160[] memory secondsPerLiquidityCumulativeX128s)
     {
-        tickCumulatives = new int56[](secondsAgos.length);
+        unchecked {
+            tickCumulatives = new int56[](secondsAgos.length);
 
-        int24 currentTick = TickMath.getTickAtSqrtRatio(pythPriceToSqrtRatioX96(getPythPrice()));
+            int24 currentTick = getPythPriceAsTick();
 
-        for (uint256 i = 0; i < secondsAgos.length; i++) {
-            // Use the same current tick for all observations
-            // The cumulative = tick * timestamp at that point in time
-            // This ensures TWAP calculations will always result in the current tick
-            tickCumulatives[i] =
-                int56(currentTick) *
-                int56(int256(block.timestamp - secondsAgos[i]));
+            for (uint256 i = 0; i < secondsAgos.length; i++) {
+                // Use the same current tick for all observations
+                // The cumulative = tick * timestamp at that point in time
+                // This ensures TWAP calculations will always result in the current tick
+                tickCumulatives[i] = int56(currentTick) * int56(int256(block.timestamp - secondsAgos[i]));
+            }
+
+            return (tickCumulatives, new uint160[](secondsAgos.length));
         }
-
-        return (tickCumulatives, new uint160[](secondsAgos.length));
     }
 
     /// @notice Get the current price from Pyth with adjustable variation.
-    /// @return The current price from Pyth
-    function getPythPrice() internal view returns (int64) {
-        PythStructs.Price memory price = pyth.getPriceUnsafe(priceFeedId);
+    /// @return The current price from Pyth, converted to a tick
+    function getPythPriceAsTick() internal view returns (int24) {
+        // getPriceNoOlderThan will revert if the price is >maxPythPriceAge seconds old
+        PythStructs.Price memory price = pyth.getPriceNoOlderThan(priceFeedId, maxPythPriceAge);
 
-        // TODO: Note, we get a publishTime back on the returned PythStructs.price too -
-        // we could do a stale check and revert here if we wanted.
-
-        return price.price;
-    }
-
-    /// @notice Take the square root of a Pyth price and put it into X96 format.
-    /// @param price raw ChainLink answer (has DECIMALS decimals)
-    /// @return sqrtPriceX96 = sqrt(price/10^DECIMALS) * 2^96
-    function pythPriceToSqrtRatioX96(int64 price) internal pure returns (uint160) {
-        // sqrt(p) has price’s decimals baked in; since price has 8 decimals,
-        // we divide out √(10^8) = 10^4 after shifting.
-        return uint160((sqrt(uint64(price)) << 96) / (10 ** (DECIMALS / 2)));
-    }
-
-    // TODO: Replace with standard lib
-    function sqrt(uint64 x) internal pure returns (uint256) {
-        if (x == 0) return x;
-        uint64 z = (x + 1) / 2;
-        uint64 y = x;
-        while (z < y) {
-            y = z;
-            z = (x / z + z) / 2;
+        // Revert if price is negative - we don't handle negative prices
+        if (price.price <= 0) {
+            revert("Invalid price: negative or zero price from Pyth");
         }
-        return y;
+
+        return pythPriceToTick(price.price, price.expo);
+    }
+
+    /// @notice Convert Pyth price directly to tick
+    /// @param price Raw Pyth price (8 decimals, can be negative)
+    /// @return tick The corresponding Uniswap V3 tick
+    function pythPriceToTick(int64 price, int32 decimals) internal pure returns (int24) {
+        unchecked {
+            // Pyth prices are returned in two components, raw units and decimals, so we need to scale to get the actual price
+            // Convert to Q128.128 format: (price * 2^128) / 10^decimals
+            uint256 priceX128 = decimals < 0
+                ? (uint256(uint64(price)) << 128) / uint256(10 ** uint32(-decimals))
+                : (uint256(uint64(price)) << 128) * uint256(10 ** uint32(decimals));
+
+            // Precision of 13 keeps the err <= 0.846169235035 tick - e.g., we're within 1 tick
+            int256 tick = log_1p0001(priceX128, 13);
+
+            return int24(tick);
+        }
+    }
+
+    /// @notice Approximates the absolute value of log base `1.0001` for a number in (0, 2**128) (`argX128/2^128`) with `precision` bits of precision.
+    /// @param argX128 The Q128.128 fixed-point number in the range (0, 2**128) to calculate the log of
+    /// @param precision The bits of precision with which to compute the result, max 63 (`err <≈ 2^-precision * log₂(1.0001)⁻¹`)
+    /// @return The absolute value of log with base `1.0001` for `argX128/2^128`
+    function log_1p0001(uint256 argX128, uint256 precision) internal pure returns (int256) {
+        unchecked {
+            // =[log₂(x)] =MSB(x)
+            int256 log2_res = int256(FixedPointMathLib.log2(argX128));
+            // Normalize argX128 to [1, 2)
+            // x_normal = x / 2^[log₂(x)]
+            // = 1.a₁a₂a₃... = 2^(0.b₁b₂b₃...)
+            // log₂(x_normal) = log₂(x / 2^⌊log₂(x)⌋)
+            // log₂(x_normal) = log₂(x) - log₂(2^⌊log₂(x)⌋)
+            // log₂(x_normal) = log₂(x) - ⌊log₂(x)⌋
+            // log₂(x) = log₂(x_normal) + ⌊log₂(x)⌋
+            if (log2_res >= 128) argX128 = argX128 >> (uint256(log2_res) - 127);
+            else argX128 <<= (127 - uint256(log2_res));
+
+            // =[log₂(x)] * 2^64
+            log2_res = (log2_res - 128) << 64;
+
+            // log₂(x_normal) = 0.b₁b₂b₃...
+            // x_normal = (1.a₁a₂a₃...) = 2^(0.b₁b₂b₃...)
+            // x_normal² = (1.a₁a₂a₃...)² = (2^(0.b₁b₂b₃...))²
+            // = 2^(0.b₁b₂b₃... * 2)
+            // = 2^(b₁ + 0.b₂b₃...)
+            // if bᵢ = 1, renormalize x_normal² to [1, 2):
+            // 2^(b₁ + 0.b₂b₃...) / 2^b₁ = 2^((b₁ - 1).b₂b₃...)
+            // = 2^(0.b₂b₃...)
+            // error = [0, 2⁻ⁿ)
+            uint256 iterBound = 63 - precision;
+            for (uint256 i = 63; i > iterBound; i--) {
+                argX128 = (argX128 ** 2) >> 127;
+                uint256 bit = argX128 >> 128;
+                log2_res = log2_res | int256(bit << i);
+                argX128 >>= bit;
+            }
+
+            // log₁.₀₀₀₁(x) = log₂(x) / log₂(1.0001)
+            // 2^64 / log₂(1.0001) ≈ 127869479499815993737216
+            return (log2_res * 127869479499815993737216) / 2 ** 128;
+        }
     }
 
     /// @notice This method is typically used to increase the maximum number of price observations, but we just no-op.

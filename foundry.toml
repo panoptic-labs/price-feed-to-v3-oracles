@@ -6,6 +6,7 @@ remappings = [
     "@pythnetwork/pyth-sdk-solidity/=lib/pyth-sdk-solidity/",
     "@uniswap/v3-core/=lib/v3-core/",
     "v3-core/=lib/v3-core/contracts/",
+    "solady/=lib/solady/",
 ]
 evm_version = "cancun"
 
