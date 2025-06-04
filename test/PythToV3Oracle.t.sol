@@ -99,13 +99,17 @@ contract PythToV3OracleTest is Test {
 
         // Tick cumulatives should be increasing in absolute value (older timestamps = smaller factor to multiply tick by)
         for (uint256 i = 0; i < tickCumulatives.length - 1; i++) {
-            assertGt(abs(tickCumulatives[i]), abs(tickCumulatives[i + 1]), "Newer observations should have larger absolute-value cumulatives");
+            assertGt(
+                abs(tickCumulatives[i]),
+                abs(tickCumulatives[i + 1]),
+                "Newer observations should have larger absolute-value cumulatives"
+            );
         }
     }
 
-    function abs(int56 num) internal pure returns(uint56) {
-      if (num < 0) return uint56(-num);
-      return uint56(num);
+    function abs(int56 num) internal pure returns (uint56) {
+        if (num < 0) return uint56(-num);
+        return uint56(num);
     }
 
     function testObserveTWAPCalculation() public {
@@ -211,26 +215,19 @@ contract PythToV3OracleTest is Test {
         uint256 oraclePrice = tickToPrice(oracleTick);
         uint256 poolPrice = tickToPrice(poolTick);
 
-        uint256 priceDiff = oraclePrice > poolPrice
-          ? oraclePrice - poolPrice
-          : poolPrice - oraclePrice;
+        uint256 priceDiff = oraclePrice > poolPrice ? oraclePrice - poolPrice : poolPrice - oraclePrice;
 
         // Check if difference is within 1% (priceDiff / poolPrice < 0.01)
         // priceDiff / poolPrice < 0.01 <=> priceDiff * 100 < poolPrice
         assertLt(priceDiff * 100, poolPrice, "Oracle price should be within 1% of Uniswap pool price");
     }
 
-
     function tickToPrice(int24 tick) internal pure returns (uint256) {
         uint160 sqrtPX96 = TickMath.getSqrtRatioAtTick(tick);
 
         // 1 << 192   = 2^192 (denominator)
         // 10**12     = 1e12  (converts wei-per-wei to USDC-with-6-decimals)
-        return FullMath.mulDiv(
-            uint256(sqrtPX96) * uint256(sqrtPX96),
-            10**12,
-            1 << 192
-        );
+        return FullMath.mulDiv(uint256(sqrtPX96) * uint256(sqrtPX96), 10 ** 12, 1 << 192);
     }
 
     function testRevertOnStalePriceAndAcceptsAllOthers(uint256 secondsInFuture) public {
