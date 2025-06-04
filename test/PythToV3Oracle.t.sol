@@ -207,7 +207,7 @@ contract PythToV3OracleTest is Test {
 
         // Get tick from actual Uniswap V3 USDC/WETH pool
         (, int24 poolTick,,,,,) = ethUsdcPool.slot0();
-        // Invert that returned tick - uni v4 has WETH (0x42...) which is token1 with USDC (0x0c...)
+        // Invert that returned tick - the pool has WETH (0x42...) which is token1 with USDC (0x0c...)
         // Why not just use invertTokenOrder in the construction of our test PythToV3Oracle?
         // Because _ETH_ (0x00...) is the token for that test oracle, not WETH
         poolTick = -poolTick;
