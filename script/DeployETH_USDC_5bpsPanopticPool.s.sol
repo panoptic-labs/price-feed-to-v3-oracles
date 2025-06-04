@@ -11,8 +11,8 @@ import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IV3CompatibleOracle} from "@interfaces/IV3CompatibleOracle.sol";
 
 contract DeployETH_USDC_5bpsPanopticPool is Script {
-    // Deployed Pyth->UniOracle contract: https://uniscan.xyz/address/0x3bb0511f6f5b025fc9870e8b1d186f2e952366e3
-    address constant ORACLE_CONTRACT = 0x3Bb0511F6f5B025Fc9870e8b1D186f2E952366E3;
+    // Deployed Pyth->UniOracle contract: https://uniscan.xyz/address/0xc4d0e75EfDbF39509858cB00809d7A59Bf667a71
+    address constant ORACLE_CONTRACT = 0xc4d0e75EfDbF39509858cB00809d7A59Bf667a71;
 
     // PanopticFactory address: https://panoptic.xyz/docs/contracts/deployment-addresses
     address constant PANOPTIC_FACTORY = 0x0000000000000CF008e9bf9D01f8306029724c80;
@@ -40,7 +40,7 @@ contract DeployETH_USDC_5bpsPanopticPool is Script {
         PanopticFactory factory = PanopticFactory(PANOPTIC_FACTORY);
 
         // Salt retrieved using ./MineETH_USDC_5bpsPanopticPoolDeploymentSalt.s.sol
-        uint96 salt = 63759;
+        uint96 salt = 19364;
 
         // Calculate and log the Pool ID
         PoolId poolId = poolKey.toId();
