@@ -9,16 +9,16 @@ import {Currency} from "v4-core/types/Currency.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IV3CompatibleOracle} from "@interfaces/IV3CompatibleOracle.sol";
 
-contract MineETH_USDC_5bpsPanopticPoolDeploymentSalt is Script {
-    // Deployed Pyth->UniOracle contract: https://uniscan.xyz/address/0xc4d0e75EfDbF39509858cB00809d7A59Bf667a71
-    address constant ORACLE_CONTRACT = 0xc4d0e75EfDbF39509858cB00809d7A59Bf667a71;
+contract MineUSDT_WBTC_5bpsPanopticPoolDeploymentSalt is Script {
+    // Deployed Pyth->UniOracle contract: https://uniscan.xyz/address/0x79B9f997752D2371790A7CF48d51b3E97a115e4F
+    address constant ORACLE_CONTRACT = 0x79B9f997752D2371790A7CF48d51b3E97a115e4F;
 
     // PanopticFactory address: https://panoptic.xyz/docs/contracts/deployment-addresses
     address constant PANOPTIC_FACTORY = 0x0000000000000CF008e9bf9D01f8306029724c80;
 
-    // ETH/USDC pool details
-    address constant ETH = 0x0000000000000000000000000000000000000000; // Unichain ETH
-    address constant USDC = 0x078D782b760474a361dDA0AF3839290b0EF57AD6; // Unichain USDC
+    // USDT/WBTC pool details for Unichain
+    address constant USDT = 0x9151434b16b9763660705744891fA906F660EcC5; // Unichain USDT
+    address constant WBTC = 0x927B51f251480a681271180DA4de28D44EC4AfB8; // Unichain WBTC
     uint24 constant FEE = 500; // 0.05% fee tier
     int24 constant TICK_SPACING = 10; // For 0.05% fee tier
 
@@ -27,8 +27,8 @@ contract MineETH_USDC_5bpsPanopticPoolDeploymentSalt is Script {
 
         // Create the PoolKey struct
         PoolKey memory poolKey = PoolKey({
-            currency0: Currency.wrap(ETH < USDC ? ETH : USDC),
-            currency1: Currency.wrap(ETH < USDC ? USDC : ETH),
+            currency0: Currency.wrap(USDT < WBTC ? USDT : WBTC),
+            currency1: Currency.wrap(USDT < WBTC ? WBTC : USDT),
             fee: FEE,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(0))
@@ -38,8 +38,8 @@ contract MineETH_USDC_5bpsPanopticPoolDeploymentSalt is Script {
 
         // Mining parameters
         address deployerAddress = msg.sender; // The address that will deploy the pool
-        uint96 startSalt = 0; // Starting salt value
-        uint256 loops = 100000; // Number of iterations to try
+        uint96 startSalt = 3000000; // Starting salt value
+        uint256 loops = 1000000; // Number of iterations to try
         uint256 minTargetRarity = 4; // Stop when we find at least 3 leading zeros
 
         // Calculate and log the Pool ID

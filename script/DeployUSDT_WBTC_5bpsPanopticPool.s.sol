@@ -10,16 +10,16 @@ import {Currency} from "v4-core/types/Currency.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IV3CompatibleOracle} from "@interfaces/IV3CompatibleOracle.sol";
 
-contract DeployETH_USDC_5bpsPanopticPool is Script {
-    // Deployed Pyth->UniOracle contract: https://uniscan.xyz/address/0xc4d0e75EfDbF39509858cB00809d7A59Bf667a71
-    address constant ORACLE_CONTRACT = 0xc4d0e75EfDbF39509858cB00809d7A59Bf667a71;
+contract DeployUSDT_WBTC_5bpsPanopticPool is Script {
+    // Deployed Pyth->UniOracle contract: https://uniscan.xyz/address/0x79B9f997752D2371790A7CF48d51b3E97a115e4F
+    address constant ORACLE_CONTRACT = 0x79B9f997752D2371790A7CF48d51b3E97a115e4F;
 
     // PanopticFactory address: https://panoptic.xyz/docs/contracts/deployment-addresses
     address constant PANOPTIC_FACTORY = 0x0000000000000CF008e9bf9D01f8306029724c80;
 
-    // ETH/USDC pool details for Unichain
-    address constant ETH = 0x0000000000000000000000000000000000000000; // Unichain ETH
-    address constant USDC = 0x078D782b760474a361dDA0AF3839290b0EF57AD6; // Unichain USDC
+    // USDT/WBTC pool details for Unichain
+    address constant USDT = 0x9151434b16b9763660705744891fA906F660EcC5; // Unichain USDT
+    address constant WBTC = 0x927B51f251480a681271180DA4de28D44EC4AfB8; // Unichain WBTC
     uint24 constant FEE = 500; // 0.05% fee tier
     int24 constant TICK_SPACING = 10; // For 0.05% fee tier
 
@@ -30,8 +30,8 @@ contract DeployETH_USDC_5bpsPanopticPool is Script {
 
         // Create the PoolKey struct
         PoolKey memory poolKey = PoolKey({
-            currency0: Currency.wrap(ETH < USDC ? ETH : USDC), // Ensure currency0 < currency1
-            currency1: Currency.wrap(ETH < USDC ? USDC : ETH),
+            currency0: Currency.wrap(USDT < WBTC ? USDT : WBTC),
+            currency1: Currency.wrap(USDT < WBTC ? WBTC : USDT),
             fee: FEE,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(0)) // No hooks for basic pool
@@ -39,8 +39,8 @@ contract DeployETH_USDC_5bpsPanopticPool is Script {
 
         PanopticFactory factory = PanopticFactory(PANOPTIC_FACTORY);
 
-        // Salt retrieved using ./MineETH_USDC_5bpsPanopticPoolDeploymentSalt.s.sol
-        uint96 salt = 19364;
+        // Salt retrieved using ./MineUSDT_WBTC_5bpsPanopticPoolDeploymentSalt
+        uint96 salt = 3060318;
 
         // Calculate and log the Pool ID
         PoolId poolId = poolKey.toId();
@@ -52,7 +52,7 @@ contract DeployETH_USDC_5bpsPanopticPool is Script {
         console.log("Fee:", poolKey.fee);
         console.log("Tick Spacing:", poolKey.tickSpacing);
         console.log("");
-        // Confirm this matches what you find in the Uni explorer - e.g.: https://app.uniswap.org/explore/pools/unichain/0x3258f413c7a88cda2fa8709a589d221a80f6574f63df5a5b6774485d8acc39d9
+        // Confirm this matches what you find in the Uni explorer - e.g.: https://app.uniswap.org/explore/pools/unichain/0x764afe9ab22a5c80882918bb4e59b954912b17a22c3524c68a8cf08f7386e08f
         console.log("Calculated Pool ID:");
         console.logBytes32(PoolId.unwrap(poolId));
         console.log("Salt:", salt);
