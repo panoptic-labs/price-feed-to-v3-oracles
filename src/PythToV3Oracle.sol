@@ -4,7 +4,7 @@ pragma solidity ^0.8.19;
 import "@pythnetwork/pyth-sdk-solidity/IPyth.sol";
 import "@pythnetwork/pyth-sdk-solidity/PythStructs.sol";
 import {TickMath} from "v3-core/libraries/TickMath.sol";
-import {FixedPointMathLib} from "solady/src/utils/FixedPointMathLib.sol";
+import {FixedPointMathLib} from "solady-utils/src/utils/FixedPointMathLib.sol";
 
 /// @title PythToV3Oracle
 /// @notice Contract that provides a Uniswap V3-compatible oracle interface on Pyth-sourced price data.
