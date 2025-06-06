@@ -33,8 +33,9 @@ contract DualPythToV3OracleTest is Test {
     function setUp() public {
         uint256 forkId = vm.createFork(vm.rpcUrl("unichain"));
         vm.selectFork(forkId);
-        oracle =
-            new DualPythToV3Oracle(pyth, ethUsdPriceFeedId, uniUsdPriceFeedId, maxPythPriceAge, decimalDifferenceFromToken0ToToken1);
+        oracle = new DualPythToV3Oracle(
+            pyth, ethUsdPriceFeedId, uniUsdPriceFeedId, maxPythPriceAge, decimalDifferenceFromToken0ToToken1
+        );
     }
 
     function testSlot0ReturnsValidPrice() public {
@@ -221,8 +222,12 @@ contract DualPythToV3OracleTest is Test {
 
         console.log(poolTick);
 
-        uint256 oraclePrice = convertRawWbtcPerWeiTickToWholeUnitPrice(oracleTick);
-        uint256 poolPrice = convertRawWbtcPerWeiTickToWholeUnitPrice(poolTick);
+        uint256 oraclePrice = convertRawUnitTickToScaledUpWholeUnitPrice(oracleTick);
+        uint256 poolPrice = convertRawUnitTickToScaledUpWholeUnitPrice(poolTick);
+
+        // Note that these are UNIs per ETH - the reciprocal of what most UIs will show you
+        console.log(oraclePrice);
+        console.log(poolPrice);
 
         uint256 priceDiff = oraclePrice > poolPrice ? oraclePrice - poolPrice : poolPrice - oraclePrice;
 
@@ -231,10 +236,10 @@ contract DualPythToV3OracleTest is Test {
         assertLt(priceDiff * 100, poolPrice, "Oracle price should be within 1% of Uniswap pool price");
     }
 
-    function convertRawWbtcPerWeiTickToWholeUnitPrice(int24 tick) internal pure returns (uint256) {
+    function convertRawUnitTickToScaledUpWholeUnitPrice(int24 tick) internal pure returns (uint256) {
         uint160 sqrtPX96 = TickMath.getSqrtRatioAtTick(tick);
 
-        return FullMath.mulDiv(uint256(sqrtPX96) * uint256(sqrtPX96), 10 ** 10, 1 << 192);
+        return FullMath.mulDiv(uint256(sqrtPX96) * uint256(sqrtPX96), 1, 1 << 192);
     }
 
     function testRevertOnEitherStalePriceAndAcceptsAllOthers(uint256 secondsInFuture) public {

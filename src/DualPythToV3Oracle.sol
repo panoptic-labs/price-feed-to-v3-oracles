@@ -161,12 +161,8 @@ contract DualPythToV3Oracle {
             revert("Invalid price: negative or zero price from Pyth");
         }
 
-        return derivedPriceToTick(
-            numeratorPrice.price,
-            denominatorPrice.price,
-            numeratorPrice.expo,
-            denominatorPrice.expo
-        );
+        return
+            derivedPriceToTick(numeratorPrice.price, denominatorPrice.price, numeratorPrice.expo, denominatorPrice.expo);
     }
 
     /// @notice Convert derived price from two Pyth feeds directly to tick
@@ -192,9 +188,9 @@ contract DualPythToV3Oracle {
             // Starts with price ratio in Q128.128, then apply scaleFactor
             uint256 derivedPriceX128 = scaleFactor < 0
                 ? ((uint256(uint64(numeratorPrice)) << 128) / uint256(uint64(denominatorPrice)))
-                  / uint256(10 ** uint32(-scaleFactor))
+                    / uint256(10 ** uint32(-scaleFactor))
                 : ((uint256(uint64(numeratorPrice)) << 128) / uint256(uint64(denominatorPrice)))
-                  * uint256(10 ** uint32(scaleFactor));
+                    * uint256(10 ** uint32(scaleFactor));
 
             // Precision of 13 keeps the err <= 0.846169235035 tick - e.g., we're within 1 tick
             int256 tick = log_1p0001(derivedPriceX128, 13);
