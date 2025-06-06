@@ -7,6 +7,8 @@ remappings = [
     "@uniswap/v3-core/=lib/v3-core/",
     "v3-core/=lib/v3-core/contracts/",
     "solady/=lib/solady/",
+    "v4-periphery=lib/v4-periphery",
+    "v4-core-for-periphery=lib/v4-periphery/lib/v4-core",
 ]
 evm_version = "cancun"
 
