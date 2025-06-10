@@ -20,8 +20,11 @@ contract DualPythToV3Oracle {
     /// @notice The Pyth price feed ID for the denominator asset (e.g., UNI/USD)
     bytes32 public immutable denominatorPriceFeedId;
 
-    /// @notice The max age we permit for *either* Pyth price before price reads revert
-    uint256 public immutable maxPythPriceAge;
+    /// @notice The max age we permit for the numerator Pyth price before price reads revert
+    uint256 public immutable maxNumeratorPriceAge;
+
+    /// @notice The max age we permit for the denominator Pyth price before price reads revert
+    uint256 public immutable maxDenominatorPriceAge;
 
     /// @notice In the target market this oracle is supposed to imitate, token1.decimals - token0.decimals
     int8 public immutable decimalDifferenceFromToken0ToToken1;
@@ -37,19 +40,22 @@ contract DualPythToV3Oracle {
     /// @param _pyth The Pyth contract to read price data from
     /// @param _numeratorPriceFeedId The Pyth price feed ID for the numerator (e.g., ETH/USD)
     /// @param _denominatorPriceFeedId The Pyth price feed ID for the denominator (e.g., UNI/USD)
-    /// @param _maxPythPriceAge The max age we permit for a Pyth price before price reads revert
+    /// @param _maxNumeratorPriceAge The max age we permit for the numerator Pyth price before price reads revert
+    /// @param _maxDenominatorPriceAge The max age we permit for the denominator Pyth price before price reads revert
     /// @param _decimalDifferenceFromToken0ToToken1 In the target market, token1.decimals - token0.decimals
     constructor(
         IPyth _pyth,
         bytes32 _numeratorPriceFeedId,
         bytes32 _denominatorPriceFeedId,
-        uint256 _maxPythPriceAge,
+        uint256 _maxNumeratorPriceAge,
+        uint256 _maxDenominatorPriceAge,
         int8 _decimalDifferenceFromToken0ToToken1
     ) {
         pyth = _pyth;
         numeratorPriceFeedId = _numeratorPriceFeedId;
         denominatorPriceFeedId = _denominatorPriceFeedId;
-        maxPythPriceAge = _maxPythPriceAge;
+        maxNumeratorPriceAge = _maxNumeratorPriceAge;
+        maxDenominatorPriceAge = _maxDenominatorPriceAge;
         decimalDifferenceFromToken0ToToken1 = _decimalDifferenceFromToken0ToToken1;
     }
 
@@ -153,8 +159,9 @@ contract DualPythToV3Oracle {
     /// @return The derived price (numerator/denominator), converted to a tick
     function combinePythPricesAndConvertToTick() internal view returns (int24) {
         // getPriceNoOlderThan will revert if the price is >maxPythPriceAge seconds old
-        PythStructs.Price memory numeratorPrice = pyth.getPriceNoOlderThan(numeratorPriceFeedId, maxPythPriceAge);
-        PythStructs.Price memory denominatorPrice = pyth.getPriceNoOlderThan(denominatorPriceFeedId, maxPythPriceAge);
+        PythStructs.Price memory numeratorPrice = pyth.getPriceNoOlderThan(numeratorPriceFeedId, maxNumeratorPriceAge);
+        PythStructs.Price memory denominatorPrice =
+            pyth.getPriceNoOlderThan(denominatorPriceFeedId, maxDenominatorPriceAge);
 
         // Revert if either price is negative or zero
         if (numeratorPrice.price <= 0 || denominatorPrice.price <= 0) {
@@ -189,8 +196,8 @@ contract DualPythToV3Oracle {
             uint256 derivedPriceX128 = scaleFactor < 0
                 ? ((uint256(uint64(numeratorPrice)) << 128) / uint256(uint64(denominatorPrice)))
                     / uint256(10 ** uint32(-scaleFactor))
-                : ((uint256(uint64(numeratorPrice)) << 128) / uint256(uint64(denominatorPrice)))
-                    * uint256(10 ** uint32(scaleFactor));
+                : ((uint256(uint64(numeratorPrice)) << 128) * uint256(10 ** uint32(scaleFactor)))
+                    / uint256(uint64(denominatorPrice));
 
             // Precision of 13 keeps the err <= 0.846169235035 tick - e.g., we're within 1 tick
             int256 tick = log_1p0001(derivedPriceX128, 13);

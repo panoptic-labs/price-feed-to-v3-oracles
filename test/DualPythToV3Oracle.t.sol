@@ -34,7 +34,12 @@ contract DualPythToV3OracleTest is Test {
         uint256 forkId = vm.createFork(vm.rpcUrl("unichain"));
         vm.selectFork(forkId);
         oracle = new DualPythToV3Oracle(
-            pyth, ethUsdPriceFeedId, uniUsdPriceFeedId, maxPythPriceAge, decimalDifferenceFromToken0ToToken1
+            pyth,
+            ethUsdPriceFeedId,
+            uniUsdPriceFeedId,
+            maxPythPriceAge,
+            maxPythPriceAge,
+            decimalDifferenceFromToken0ToToken1
         );
     }
 
@@ -242,6 +247,7 @@ contract DualPythToV3OracleTest is Test {
         return FullMath.mulDiv(uint256(sqrtPX96) * uint256(sqrtPX96), 1, 1 << 192);
     }
 
+    // TODO: Could test this with differing numerator & denominator maxPythPriceAges
     function testRevertOnEitherStalePriceAndAcceptsAllOthers(uint256 secondsInFuture) public {
         vm.assume(secondsInFuture <= block.timestamp); // don't go more than (now - unix_origin) in the future - very large timestamps overflow the tickCumulative calculation
         // Fast forward time, possibly beyond maxPythPriceAge
