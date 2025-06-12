@@ -6,43 +6,57 @@ import "@pythnetwork/pyth-sdk-solidity/PythStructs.sol";
 import {TickMath} from "v3-core/libraries/TickMath.sol";
 import {FixedPointMathLib} from "solady/src/utils/FixedPointMathLib.sol";
 
-/// @title PythToV3Oracle
-/// @notice Contract that provides a Uniswap V3-compatible oracle interface on Pyth-sourced price data.
-contract PythToV3Oracle {
+/// @title DualPythToV3Oracle
+/// @notice Contract that provides a Uniswap V3-compatible oracle interface on two Pyth-sourced prices
+///         which share an asset, allowing you to get a price for the two non-shared assets.
+///         Example: ETH/USD and UNI/USD -> ETH/UNI (by dividing ETH/USD by UNI/USD)
+contract DualPythToV3Oracle {
     /// @notice The Pyth contract this adapter interacts with.
     IPyth public immutable pyth;
 
-    /// @notice The Pyth price feed ID for the trading pair
-    bytes32 public immutable priceFeedId;
+    /// @notice The Pyth price feed ID for the numerator asset (e.g., ETH/USD)
+    bytes32 public immutable numeratorPriceFeedId;
 
-    /// @notice The max age we permit for a Pyth price before price reads revert
-    uint256 public immutable maxPythPriceAge;
+    /// @notice The Pyth price feed ID for the denominator asset (e.g., UNI/USD)
+    bytes32 public immutable denominatorPriceFeedId;
+
+    /// @notice The max age we permit for the numerator Pyth price before price reads revert
+    uint256 public immutable maxNumeratorPriceAge;
+
+    /// @notice The max age we permit for the denominator Pyth price before price reads revert
+    uint256 public immutable maxDenominatorPriceAge;
 
     /// @notice In the target market this oracle is supposed to imitate, token1.decimals - token0.decimals
-    ///         (or, if invertTokenOrder, token0.decimals - token1.decimals)
     int8 public immutable decimalDifferenceFromToken0ToToken1;
 
-    /// @notice Whether to invert the token0/token1 ordering (negate the tick)
-    bool public immutable invertTokenOrder;
+    /// NOTE: Unlike PythToV3Oracle, there is no invertTokenOrder
+    /// That is because you can simply swap the _numeratorPriceFeedId and _denominatorPriceFeedId
+    /// There is a hairier possibility: What if you need to flip *just* the denominator,
+    /// but the numerator is fine? or v.v.?
+    /// Indeed, we could add _invertDenominatorPriceFeed or _invertNumeratorPriceFeed to solve that
+    /// But we don't need that right now, so kicking to future scope.
 
-    /// @notice Initializes the adapter with the Pyth contract and price feed ID.
+    /// @notice Initializes the adapter with the Pyth contract and price feed IDs.
     /// @param _pyth The Pyth contract to read price data from
-    /// @param _priceFeedId The Pyth price feed ID for the desired trading pair
-    /// @param _maxPythPriceAge The max age we permit for a Pyth price before price reads revert
+    /// @param _numeratorPriceFeedId The Pyth price feed ID for the numerator (e.g., ETH/USD)
+    /// @param _denominatorPriceFeedId The Pyth price feed ID for the denominator (e.g., UNI/USD)
+    /// @param _maxNumeratorPriceAge The max age we permit for the numerator Pyth price before price reads revert
+    /// @param _maxDenominatorPriceAge The max age we permit for the denominator Pyth price before price reads revert
     /// @param _decimalDifferenceFromToken0ToToken1 In the target market, token1.decimals - token0.decimals
-    /// @param _invertTokenOrder Whether to invert the token0/token1 ordering
     constructor(
         IPyth _pyth,
-        bytes32 _priceFeedId,
-        uint256 _maxPythPriceAge,
-        int8 _decimalDifferenceFromToken0ToToken1,
-        bool _invertTokenOrder
+        bytes32 _numeratorPriceFeedId,
+        bytes32 _denominatorPriceFeedId,
+        uint256 _maxNumeratorPriceAge,
+        uint256 _maxDenominatorPriceAge,
+        int8 _decimalDifferenceFromToken0ToToken1
     ) {
         pyth = _pyth;
-        priceFeedId = _priceFeedId;
-        maxPythPriceAge = _maxPythPriceAge;
+        numeratorPriceFeedId = _numeratorPriceFeedId;
+        denominatorPriceFeedId = _denominatorPriceFeedId;
+        maxNumeratorPriceAge = _maxNumeratorPriceAge;
+        maxDenominatorPriceAge = _maxDenominatorPriceAge;
         decimalDifferenceFromToken0ToToken1 = _decimalDifferenceFromToken0ToToken1;
-        invertTokenOrder = _invertTokenOrder;
     }
 
     /// @notice Emulates the behavior of the exposed zeroth slot of a Uniswap V3 pool.
@@ -67,7 +81,7 @@ contract PythToV3Oracle {
         )
     {
         unchecked {
-            tick = getPythPriceAsTick();
+            tick = combinePythPricesAndConvertToTick();
             // NOTE: that this is tick-snapped and less precise - the opposite of typical
             // slot0 responses, where `tick` loses some of `sqrtPrice`'s precision
             sqrtPriceX96 = TickMath.getSqrtRatioAtTick(tick);
@@ -107,7 +121,7 @@ contract PythToV3Oracle {
             // Use a blockTimestamp close to now, but unique per-observation
             // Index 0 was 65534 seconds ago, and the max index was now
             blockTimestamp = uint32(block.timestamp - 65534 + index);
-            tickCumulative = int56(getPythPriceAsTick()) * int56(int32(blockTimestamp));
+            tickCumulative = int56(combinePythPricesAndConvertToTick()) * int56(int32(blockTimestamp));
 
             // Always 0 in v4
             secondsPerLiquidityCumulativeX128 = 0;
@@ -128,7 +142,7 @@ contract PythToV3Oracle {
         unchecked {
             tickCumulatives = new int56[](secondsAgos.length);
 
-            int24 currentTick = getPythPriceAsTick();
+            int24 currentTick = combinePythPricesAndConvertToTick();
 
             for (uint256 i = 0; i < secondsAgos.length; i++) {
                 // Use the same current tick for all observations
@@ -141,43 +155,52 @@ contract PythToV3Oracle {
         }
     }
 
-    /// @notice Get the current price from Pyth with adjustable variation.
-    /// @return The current price from Pyth, converted to a tick
-    function getPythPriceAsTick() internal view returns (int24) {
+    /// @notice Get the current price from two Pyth feeds, divide them, & convert to tick.
+    /// @return The derived price (numerator/denominator), converted to a tick
+    function combinePythPricesAndConvertToTick() internal view returns (int24) {
         // getPriceNoOlderThan will revert if the price is >maxPythPriceAge seconds old
-        PythStructs.Price memory price = pyth.getPriceNoOlderThan(priceFeedId, maxPythPriceAge);
+        PythStructs.Price memory numeratorPrice = pyth.getPriceNoOlderThan(numeratorPriceFeedId, maxNumeratorPriceAge);
+        PythStructs.Price memory denominatorPrice =
+            pyth.getPriceNoOlderThan(denominatorPriceFeedId, maxDenominatorPriceAge);
 
-        // Revert if price is negative - we don't handle negative prices
-        if (price.price <= 0) {
+        // Revert if either price is negative or zero
+        if (numeratorPrice.price <= 0 || denominatorPrice.price <= 0) {
             revert("Invalid price: negative or zero price from Pyth");
         }
 
-        // Adjust for both both Pyth exponent, and the token decimals difference
-        // V3 prices are token1/token0 in raw units (wei), not whole tokens
-        // So we need to scale by 10^(token1Decimals - token0Decimals)
-        return pythPriceToTick(price.price, price.expo + decimalDifferenceFromToken0ToToken1);
+        return
+            derivedPriceToTick(numeratorPrice.price, denominatorPrice.price, numeratorPrice.expo, denominatorPrice.expo);
     }
 
-    /// @notice Convert Pyth price directly to tick
-    /// @param price Raw Pyth price (cannot be negative - we required against it in getPythPriceAsTick)
-    /// @param decimals Decimal adjustment to get raw-unit price
+    /// @notice Convert derived price from two Pyth feeds directly to tick
+    /// @param numeratorPrice Raw numerator price from Pyth
+    /// @param denominatorPrice Raw denominator price from Pyth
+    /// @param numeratorExpo Exponent for numerator price
+    /// @param denominatorExpo Exponent for denominator price
     /// @return tick The corresponding Uniswap V3 tick
-    function pythPriceToTick(int64 price, int32 decimals) internal view returns (int24) {
+    function derivedPriceToTick(
+        int64 numeratorPrice,
+        int64 denominatorPrice,
+        int32 numeratorExpo,
+        int32 denominatorExpo
+    ) internal view returns (int24) {
         unchecked {
-            // Pyth prices are returned in two components, raw units and decimals, so we need to scale to get the actual price
-            // We then also have to scale by the difference in token1's raw units and token0's
-            // Convert to Q128.128 format: (price * 2^128) / 10^(pythPrice.expo + decimalDifferenceFromToken0ToToken1)
-            uint256 priceX128 = decimals < 0
-                ? (uint256(uint64(price)) << 128) / uint256(10 ** uint32(-decimals))
-                : (uint256(uint64(price)) << 128) * uint256(10 ** uint32(decimals));
+            // Calculate derived price as: (numeratorPrice * 10^numeratorExpo) / (denominatorPrice * 10^denominatorExpo)
+            // This simplifies to: (numeratorPrice / denominatorPrice) * 10^(numeratorExpo - denominatorExpo)
+            // Then, apply token decimal adjustment for target pool to imitate: * 10^(decimalDifferenceFromToken0ToToken1)
+            // Final formula: (numeratorPrice / denominatorPrice) * 10^(numeratorExpo - denominatorExpo + decimalDifferenceFromToken0ToToken1)
+
+            int32 scaleFactor = numeratorExpo - denominatorExpo + int32(decimalDifferenceFromToken0ToToken1);
+
+            // Starts with price ratio in Q128.128, then apply scaleFactor
+            uint256 derivedPriceX128 = scaleFactor < 0
+                ? ((uint256(uint64(numeratorPrice)) << 128) / uint256(uint64(denominatorPrice)))
+                    / uint256(10 ** uint32(-scaleFactor))
+                : ((uint256(uint64(numeratorPrice)) << 128) * uint256(10 ** uint32(scaleFactor)))
+                    / uint256(uint64(denominatorPrice));
 
             // Precision of 13 keeps the err <= 0.846169235035 tick - e.g., we're within 1 tick
-            int256 tick = log_1p0001(priceX128, 13);
-
-            // Invert the tick if needed (equivalent to taking reciprocal of price)
-            if (invertTokenOrder) {
-                tick = -tick;
-            }
+            int256 tick = log_1p0001(derivedPriceX128, 13);
 
             return int24(tick);
         }
