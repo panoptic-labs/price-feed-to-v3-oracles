@@ -9,6 +9,7 @@ remappings = [
     "solady/=lib/solady/",
     "v4-periphery=lib/v4-periphery",
     "v4-core-for-periphery=lib/v4-periphery/lib/v4-core",
+    "@redstone-finance/=lib/redstone-oracles-monorepo/packages/on-chain-relayer/contracts",
 ]
 evm_version = "cancun"
 
