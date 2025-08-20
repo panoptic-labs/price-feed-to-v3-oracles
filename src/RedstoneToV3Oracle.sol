@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import { IRedstoneAdapter } from "@redstone-finance/core/IRedstoneAdapter.sol";
+import {IRedstoneAdapter} from "@redstone-finance/core/IRedstoneAdapter.sol";
 import {TickMath} from "v3-core/libraries/TickMath.sol";
 import {FixedPointMathLib} from "solady/src/utils/FixedPointMathLib.sol";
 

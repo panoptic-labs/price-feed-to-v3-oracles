@@ -34,12 +34,12 @@ contract RedstoneToV3OracleTest is Test {
         uint256 forkId = vm.createFork(vm.rpcUrl("unichain"));
         vm.selectFork(forkId);
         wstethOracle = new RedstoneToV3Oracle(
-           redstoneAdapter,
-           wstethEthPriceFeedId,
-           0,    // both wstETH and ETH have 18 decimals, so difference is 0
-           true, // need to invertTokenOrder - ETH is token0 and wstETH is token1 on Uniswap, so the tick is wstETH per ETH; the redstone price is ETH per wstETH
-           8     // redstoneDecimals
-       );
+            redstoneAdapter,
+            wstethEthPriceFeedId,
+            0, // both wstETH and ETH have 18 decimals, so difference is 0
+            true, // need to invertTokenOrder - ETH is token0 and wstETH is token1 on Uniswap, so the tick is wstETH per ETH; the redstone price is ETH per wstETH
+            8 // redstoneDecimals
+        );
     }
 
     function testSlot0ReturnsValidPrice() public {
@@ -57,7 +57,6 @@ contract RedstoneToV3OracleTest is Test {
 
         console.log("Oracle tick: ", oracleTick);
         console.log("V4 Pool tick: ", poolTick);
-
 
         // Convert ticks to comparable prices
         uint256 oraclePrice = convertRawWstethWeiPerEthWeiTickToPrice(oracleTick);
